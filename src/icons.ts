@@ -1,3 +1,4 @@
+import arrowDown from "@phosphor-icons/core/assets/regular/caret-down.svg?raw";
 /** Official Phosphor regular SVG assets; no icon font or hand-drawn substitutes. */
 import svg0 from "@phosphor-icons/core/assets/regular/house.svg?raw";
 import svg1 from "@phosphor-icons/core/assets/regular/squares-four.svg?raw";
@@ -37,6 +38,7 @@ import artists from "@phosphor-icons/core/assets/regular/users-three.svg?raw";
 import albums from "@phosphor-icons/core/assets/regular/vinyl-record.svg?raw";
 import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
 const icons: Record<string, string> = {
+  "arrow-down":arrowDown,
   artists,
   albums,
   "arrow-left": arrowLeft,
