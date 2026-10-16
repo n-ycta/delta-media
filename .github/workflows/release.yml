@@ -1,0 +1,22 @@
+name: Release portable Media app
+on:
+  push:
+    tags: ['v*']
+permissions: {contents: write}
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', cache: npm}
+      - run: npm ci --ignore-scripts
+      - run: npm test && npm run package:app
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+          cd release && sha256sum -c SHA256SUMS && cd ..
+          gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease --title "Delta Media $GITHUB_REF_NAME" --notes-file RELEASE.md release/delta-media.delta-app release/SHA256SUMS

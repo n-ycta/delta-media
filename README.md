@@ -2,7 +2,7 @@
 
 A portable, local-first media engine and standalone web UI for Delta. The client has no Node.js runtime dependency: its modules and browser player are intended for Web, Desktop WebView and Android WebView. Node.js is a development/build tool only.
 
-**Current delivery:** working portable client and experimental `delta-app-v1` package, with real isolated Plugin UI SDK embedding tests. Native package installation/decoder acceptance is being integrated separately; native background playback and Delta synchronization are not implemented. A browser test is not APK/EXE acceptance.
+**Current delivery:** working portable client and experimental `delta-app-v1` package, with real isolated Plugin UI SDK embedding tests. Portable package installation and UI startup passed Android-emulator and installed Linux/Windows host acceptance. Native decoder/background acceptance and Delta synchronization are not implemented. A browser test is not APK/EXE acceptance.
 
 ## Run
 
@@ -60,6 +60,6 @@ The UI shows the same operation-level statuses. No unavailable integration retur
 - `playlists.ts` / `portable.ts`: link and metadata interchange.
 - `main.ts`: UI orchestration, no access to Delta owner credentials.
 
-The inspected Host Bridge 1.0 has a 64 KiB JSON request bound. Its current Plugin UI SDK is a source/origin-pinned, grant-limited message broker, not an app installer or a large-file transport. Native hosts currently disable arbitrary plugin frames. The generic host now has a separately verified portable static app package format, per-app origins and an empty-grant SDK channel; this client uses `connectPlugin` for launch context and receives no root transport or credentials. Native acceptance, streaming file handles, platform background/audio-session adapters and compatible Delta replication still require completion before synchronized native libraries can be claimed. Android must not depend on desktop Node.js process installation.
+The inspected Host Bridge 1.0 has a 64 KiB JSON request bound. Its current Plugin UI SDK is a source/origin-pinned, grant-limited message broker, not an app installer or a large-file transport. Native hosts reject arbitrary unverified plugin frames. The generic host now has a separately verified portable static app package format, per-app origins and an empty-grant SDK channel; this client uses `connectPlugin` for launch context and receives no root transport or credentials. Native media-decoder acceptance, streaming file handles, platform background/audio-session adapters and compatible Delta replication still require completion before synchronized native libraries can be claimed. Android must not depend on desktop Node.js process installation.
 
-Artist/album pages, smart playlists, collection mounts, full-text remote search, authenticated integrations and synchronized multi-device libraries are not part of this build. They must be implemented behind real adapter contracts rather than UI-only placeholders.
+Collection mounts, full-text remote search, authenticated integrations and synchronized multi-device libraries are not part of this build. They must be implemented behind real adapter contracts rather than UI-only placeholders.
