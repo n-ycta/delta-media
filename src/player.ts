@@ -1,0 +1,218 @@
+import { nextIndex, uid, type State, type Media } from "./model";
+import { Storage } from "./storage";
+export class Player extends EventTarget {
+  private objectUrl = "";
+  private session = false;
+  private lastTick = 0;
+  private lastSave = 0;
+  private generation = 0;
+  private historyId = "";
+  private metadataReady = false;
+  private restorePosition = 0;
+  current?: Media;
+  constructor(
+    readonly element: HTMLVideoElement,
+    readonly state: State,
+    readonly storage: Storage,
+    readonly save: () => Promise<void>,
+  ) {
+    super();
+    element.volume = state.volume;
+    element.addEventListener("loadedmetadata", () => {
+      const m = this.current;
+      if (!m) return;
+      this.metadataReady = true;
+      if (Number.isFinite(element.duration)) m.duration = element.duration;
+      if (
+        this.restorePosition > 0 &&
+        (!Number.isFinite(element.duration) ||
+          this.restorePosition < element.duration - 1)
+      ) {
+        try {
+          element.currentTime = this.restorePosition;
+        } catch {}
+      }
+      this.change();
+    });
+    element.addEventListener("playing", () => {
+      if (!this.current) return;
+      if (!this.session) {
+        this.current.plays++;
+        this.current.lastPlayed = Date.now();
+        this.historyId = uid();
+        state.history.unshift({
+          id: this.historyId,
+          mediaId: this.current.id,
+          at: Date.now(),
+          position: this.current.position,
+          seconds: 0,
+        });
+        state.history = state.history.slice(0, 1000);
+        this.session = true;
+      }
+      this.lastTick = performance.now();
+      this.change();
+    });
+    element.addEventListener("timeupdate", () => {
+      const m = this.current;
+      if (!m || !this.metadataReady) return;
+      const now = performance.now();
+      const delta = (now - this.lastTick) / 1000;
+      if (
+        !element.paused &&
+        !element.seeking &&
+        this.lastTick &&
+        delta > 0 &&
+        delta < 3
+      ) {
+        m.listenedSeconds += delta;
+        const h = state.history.find((h) => h.id === this.historyId);
+        if (h) h.seconds += delta;
+      }
+      this.lastTick = now;
+      if (Number.isFinite(element.currentTime))
+        m.position = element.currentTime;
+      const h = state.history.find((h) => h.id === this.historyId);
+      if (h) h.position = m.position;
+      this.change();
+      if (now - this.lastSave > 5000) {
+        this.lastSave = now;
+        void save().catch(() => {});
+      }
+    });
+    element.addEventListener("pause", () => {
+      this.lastTick = 0;
+      void save().catch(() => {});
+      this.change();
+    });
+    element.addEventListener("seeking", () => {
+      this.lastTick = 0;
+    });
+    element.addEventListener("ended", () => {
+      if (this.current) this.current.position = 0;
+      void save().catch(() => {});
+      void this.next(true).catch((e) =>
+        this.dispatchEvent(new CustomEvent("failure", { detail: e.message })),
+      );
+    });
+    element.addEventListener("error", () => {
+      this.dispatchEvent(
+        new CustomEvent("failure", {
+          detail:
+            "Playback failed: unavailable link, network restriction, unsupported codec or protected media. Try a supported local file or direct HTTPS media URL.",
+        }),
+      );
+      this.change();
+    });
+    if ("mediaSession" in navigator) {
+      for (const [action, handler] of Object.entries({
+        play: (): void => {
+          void this.play().catch(() => {});
+        },
+        pause: (): void => element.pause(),
+        nexttrack: (): void => {
+          void this.next().catch(() => {});
+        },
+        previoustrack: (): void => {
+          void this.previous().catch(() => {});
+        },
+        seekbackward: () => this.seek(element.currentTime - 15),
+        seekforward: () => this.seek(element.currentTime + 15),
+      }))
+        try {
+          navigator.mediaSession.setActionHandler(
+            action as MediaSessionAction,
+            handler,
+          );
+        } catch {}
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) void save().catch(() => {});
+    });
+    window.addEventListener("pagehide", () => void save().catch(() => {}));
+  }
+  private change() {
+    this.dispatchEvent(new Event("change"));
+  }
+  async load(index: number, autoplay = true): Promise<void> {
+    const id = this.state.queue[index],
+      m = this.state.media.find((m) => m.id === id);
+    if (!m)
+      throw Error("Queue item is unavailable. Remove it or reimport the file.");
+    const generation = ++this.generation;
+    this.element.pause();
+    this.metadataReady = false;
+    this.restorePosition = m.position;
+    this.current = m;
+    this.state.queueIndex = index;
+    this.session = false;
+    this.historyId = "";
+    if (this.objectUrl) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = "";
+    }
+    this.element.removeAttribute("src");
+    this.element.load();
+    const source = m.fileId ? await this.storage.file(m.fileId) : m.url;
+    if (generation !== this.generation) return;
+    if (!source) throw Error("This item has no playable source.");
+    if (source instanceof Blob) {
+      this.objectUrl = URL.createObjectURL(source);
+      this.element.src = this.objectUrl;
+    } else this.element.src = source;
+    this.element.hidden = !["video", "live"].includes(m.kind);
+    this.element.load();
+    if ("mediaSession" in navigator)
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: m.title,
+        artist: m.artist || "",
+        album: m.album || "",
+      });
+    await this.save();
+    this.change();
+    if (autoplay) await this.play();
+  }
+  async play(): Promise<void> {
+    try {
+      await this.element.play();
+    } catch (e) {
+      if ((e as DOMException).name === "NotAllowedError")
+        throw Error("Press Play to allow playback on this device.");
+      throw e;
+    }
+  }
+  async toggle(): Promise<void> {
+    if (this.element.paused) await this.play();
+    else this.element.pause();
+  }
+  seek(time: number) {
+    if (!Number.isFinite(time)) return;
+    const max = Number.isFinite(this.element.duration)
+      ? this.element.duration
+      : Infinity;
+    try {
+      this.element.currentTime = Math.max(0, Math.min(max, time));
+    } catch {
+      throw Error("Seeking is unavailable for this stream.");
+    }
+  }
+  async next(ended = false): Promise<void> {
+    const next = nextIndex(this.state, ended);
+    if (next === null) {
+      this.element.pause();
+      this.change();
+      return;
+    }
+    if (!ended && this.current) this.current.skips++;
+    if (next === this.state.queueIndex && ended && this.current)
+      this.current.position = 0;
+    await this.load(next);
+  }
+  async previous(): Promise<void> {
+    if (this.element.currentTime > 3) {
+      this.seek(0);
+      return;
+    }
+    if (this.state.queueIndex > 0) await this.load(this.state.queueIndex - 1);
+  }
+}

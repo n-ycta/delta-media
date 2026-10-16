@@ -1,0 +1,41 @@
+/* ==========================================================================
+   Delta design tokens
+   Concept: "instrument ledger" — paper-like neutral surfaces, ink typography,
+   one signal colour (vermilion) reserved for focus/attention, semantic status
+   colours used only for state. No shadows for hierarchy: rules and spacing do it.
+   ========================================================================== */
+:root {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 19px; --fs-2xl: 24px; --fs-num: 28px;
+  --lh: 1.45;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+  --r-sm: 3px; --r-md: 5px; --r-lg: 8px;
+
+  --row: 34px; --ctl: 30px; --topbar: 48px; --sidebar: 228px;
+  --ease: cubic-bezier(.2,.7,.2,1);
+}
+[data-density='compact'] { --row: 28px; --ctl: 26px; --fs-md: 12.5px; }
+
+[data-theme='light'] {
+  --bg: #F2F0EB; --surface: #FBFAF7; --surface-2: #F6F4EF; --sunken: #EAE7E0; --hover: #EFECE5; --selected: #E8E4DB;
+  --ink: #1A1A18; --ink-2: #45433E; --muted: #7A766C; --faint: #A7A296;
+  --rule: #DFDBD1; --rule-strong: #C8C3B6;
+  --accent: #D9480F; --accent-weak: #F7E2D6; --accent-ink: #FFFFFF;
+  --ok: #2E7A4C; --ok-weak: #DCEBDF; --warn: #A86F12; --warn-weak: #F3E7CC; --err: #BC3424; --err-weak: #F5DDD8; --crit: #861A16; --info: #2C5A86; --info-weak: #DCE5EE; --off: #9A958A;
+  --chart-grid: #E6E2D9; --chart-axis: #8F8A7F;
+  --overlay: rgba(26, 26, 24, .32);
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  --bg: #111110; --surface: #191918; --surface-2: #1D1D1B; --sunken: #0C0C0B; --hover: #222220; --selected: #2A2A27;
+  --ink: #ECEAE3; --ink-2: #C3BFB4; --muted: #8D897F; --faint: #5F5C55;
+  --rule: #2A2926; --rule-strong: #3B3A36;
+  --accent: #F26B2B; --accent-weak: #3A2014; --accent-ink: #111110;
+  --ok: #5BB07D; --ok-weak: #18291E; --warn: #D7A443; --warn-weak: #2E2512; --err: #E8634F; --err-weak: #331815; --crit: #FF8A7A; --info: #79A5D3; --info-weak: #17222E; --off: #6E6A62;
+  --chart-grid: #262523; --chart-axis: #7B776E;
+  --overlay: rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
