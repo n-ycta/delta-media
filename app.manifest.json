@@ -1,0 +1,26 @@
+{
+  "id": "dev.delta.media",
+  "name": "Delta Media",
+  "version": "0.1.0-alpha.1",
+  "entry": "index.html",
+  "runtime": {
+    "execution": "web",
+    "platforms": [
+      "android",
+      "windows",
+      "linux",
+      "macos",
+      "ios",
+      "web"
+    ],
+    "architectures": [
+      "any"
+    ]
+  },
+  "permissions": [
+    "storage.local",
+    "media.playback",
+    "network.https"
+  ],
+  "grants": []
+}

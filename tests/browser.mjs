@@ -183,6 +183,12 @@ try {
   await page.locator("#language-select").selectOption("ru");
   await page.getByRole("button", { name: "Медиатека", exact: false }).waitFor();
   results.push("Language changes only in Settings and survives restart");
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await context.setOffline(true);
+  await page.reload();
+  await page.getByRole("button", {name:"Медиатека",exact:false}).waitFor();
+  results.push("Cold offline restart loads the cached application shell");
+  await context.setOffline(false);
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(

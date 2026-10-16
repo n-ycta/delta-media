@@ -9,8 +9,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '24', cache: npm}
       - run: npm ci --ignore-scripts
-      - run: npm test && npm run build
+      - run: npm test && npm run package:app
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - uses: actions/upload-artifact@v4
         with: {name: delta-media-web-client, path: dist}
+
+      - uses: actions/upload-artifact@v4
+        with: {name: delta-media-portable-app, path: release}

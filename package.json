@@ -1,25 +1,27 @@
 {
- "name": "delta-media",
- "version": "0.1.0",
- "private": true,
- "type": "module",
- "license": "Apache-2.0",
- "scripts": {
-  "dev": "vite --host 0.0.0.0",
-  "build": "tsc --noEmit && vite build",
-  "test": "tsx --test tests/*.test.ts",
-  "test:browser": "node tests/browser.mjs"
- },
- "devDependencies": {
-  "@types/node": "^24.19.2",
-  "playwright": "^1.63.0",
-  "tsx": "^4.19.1",
-  "typescript": "^5.6.2",
-  "vite": "^8.3.4"
- },
- "dependencies": {
-  "@fontsource/ibm-plex-mono": "^5.3.0",
-  "@fontsource/ibm-plex-sans": "^5.3.0",
-  "@phosphor-icons/core": "^2.1.1"
- }
+  "name": "delta-media",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build && node scripts/offline.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "test:browser": "node tests/browser.mjs",
+    "package:app": "npm run build && node scripts/package-app.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "playwright": "^1.63.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@phosphor-icons/core": "^2.1.1",
+    "@delta/ui": "https://github.com/n-ycta/delta-ui/archive/8b62273b5247d880480c3bcc0b831602f3ae03f9.tar.gz"
+  }
 }

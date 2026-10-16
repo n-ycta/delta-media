@@ -1,3 +1,4 @@
+import {connectPlugin, type AppContext} from "@delta/ui/sdk/client";
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
@@ -23,9 +24,21 @@ import {
 } from "./model";
 import { parsePlaylist, exportPlaylist } from "./playlists";
 const app = document.querySelector<HTMLDivElement>("#app")!;
-let language = localStorage.getItem("delta-media.language") || "en";
+const launch = new URL(location.href).searchParams;
+let hostContext: AppContext | undefined;
+let sdkError = "";
+if (parent !== window && launch.get("embedded") === "1") {
+  try {
+    const parentOrigin = launch.get("parentOrigin");
+    if (!parentOrigin) throw Error("missing_parent_origin");
+    const connection = await connectPlugin(parentOrigin);
+    hostContext = connection.context;
+    window.addEventListener("pagehide", () => connection.close(), {once:true});
+  } catch (e) { sdkError = "Delta SDK: " + (e as Error).message; }
+}
+let language = localStorage.getItem("delta-media.language") || hostContext?.language || "en";
 const t = (ru: string, en: string) => (language === "ru" ? ru : en);
-const preference = localStorage.getItem("delta-media.theme");
+const preference = localStorage.getItem("delta-media.theme") || hostContext?.theme;
 let theme =
   preference === "light" || preference === "dark"
     ? preference
@@ -735,6 +748,9 @@ app.addEventListener("click", (e) => {
   }
 });
 async function boot() {
+  if ("serviceWorker" in navigator && ["http:","https:"].includes(location.protocol) && !location.hostname.startsWith("deltaapp-")) {
+    void navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
   storage = await new Storage().open();
   state = await storage.load();
   shell();
@@ -750,6 +766,7 @@ async function boot() {
   );
   render();
   updatePlayer();
+  if (sdkError) notify(sdkError, true);
   if (state.queue.length) {
     try {
       await player.load(
