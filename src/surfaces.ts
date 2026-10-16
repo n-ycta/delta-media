@@ -1,6 +1,74 @@
-export const mediaSurfaces=['home','library','audio','artists','albums','video','podcast','audiobook','radio','favorites','history','playlists','sources','stats','queue','settings'] as const;
-export type MediaSurface=typeof mediaSurfaces[number];
-export function validSurface(v:unknown):v is MediaSurface{return typeof v==='string'&&(mediaSurfaces as readonly string[]).includes(v)}
-export function hiddenSurfaces():Set<string>{try{const ids=JSON.parse(localStorage.getItem('delta-media.hidden-views')||'[]');return new Set(Array.isArray(ids)?ids.filter((id:unknown)=>validSurface(id)&&id!=='settings'):[])}catch{return new Set()}}
+export const mediaSurfaces = [
+  "home",
+  "library",
+  "audio",
+  "artists",
+  "albums",
+  "video",
+  "podcast",
+  "audiobook",
+  "radio",
+  "favorites",
+  "history",
+  "playlists",
+  "sources",
+  "stats",
+  "queue",
+  "settings",
+] as const;
+export type MediaSurface = (typeof mediaSurfaces)[number];
+export function validSurface(v: unknown): v is MediaSurface {
+  return (
+    typeof v === "string" && (mediaSurfaces as readonly string[]).includes(v)
+  );
+}
+export function hiddenSurfaces(): Set<string> {
+  try {
+    const ids = JSON.parse(
+      localStorage.getItem("delta-media.hidden-views") || "[]",
+    );
+    return new Set(
+      Array.isArray(ids)
+        ? ids.filter((id: unknown) => validSurface(id) && id !== "settings")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
 /** A presentation-only bridge. It never receives tokens or grants. */
-export function watchPresentation(apply:(surface:MediaSurface|undefined,theme:'light'|'dark'|undefined,compact:boolean)=>void){const q=new URL(location.href).searchParams,parentOrigin=q.get('parentOrigin');let channel='';window.addEventListener('message',e=>{if(!parentOrigin||e.source!==parent||e.origin!==parentOrigin||!['delta:initialize','delta:presentation'].includes(e.data?.type))return;if(e.data.type==='delta:initialize'&&e.data.context?.appId==='dev.delta.media'&&typeof e.data.channel==='string')channel=e.data.channel;if(!channel||e.data.channel!==channel)return;const c=e.data.context||{};apply(validSurface(c.surface)?c.surface:undefined,['light','dark'].includes(c.theme)?c.theme:undefined,!!c.surface)})}
+export function watchPresentation(
+  apply: (
+    surface: MediaSurface | undefined,
+    theme: "light" | "dark" | undefined,
+    compact: boolean,
+  ) => void,
+) {
+  const q = new URL(location.href).searchParams,
+    parentOrigin = q.get("parentOrigin");
+  let channel = "";
+  window.addEventListener("message", (e) => {
+    if (
+      !parentOrigin ||
+      e.source !== parent ||
+      e.origin !== parentOrigin ||
+      !["delta:initialize", "delta:presentation"].includes(e.data?.type)
+    )
+      return;
+    if (
+      e.data.type === "delta:initialize" &&
+      e.data.context?.appId === "dev.delta.media" &&
+      typeof e.data.channel === "string"
+    )
+      channel = e.data.channel;
+    if (!channel || e.data.channel !== channel) return;
+    const c = e.data.context || {};
+    apply(
+      validSurface(c.surface) ? c.surface : undefined,
+      ["light", "dark"].includes(c.theme) ? c.theme : undefined,
+      !!c.surface,
+    );
+  });
+  if (parent !== window && parentOrigin)
+    parent.postMessage({ type: "delta:ready" }, parentOrigin);
+}

@@ -1,7 +1,7 @@
 {
   "id": "dev.delta.media",
   "name": "Delta Media",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "entry": "index.html",
   "runtime": {
     "execution": "web",
@@ -22,5 +22,145 @@
     "media.playback",
     "network.https"
   ],
-  "grants": []
+  "grants": [],
+  "ui": {
+    "version": 1,
+    "surfaces": [
+      {
+        "id": "library",
+        "name": {
+          "en": "Library",
+          "ru": "Медиатека"
+        },
+        "icon": "squares-four",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "audio",
+        "name": {
+          "en": "Music",
+          "ru": "Музыка"
+        },
+        "icon": "music-notes",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "video",
+        "name": {
+          "en": "Video",
+          "ru": "Видео"
+        },
+        "icon": "video",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "podcast",
+        "name": {
+          "en": "Podcasts",
+          "ru": "Подкасты"
+        },
+        "icon": "microphone-stage",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "audiobook",
+        "name": {
+          "en": "Audiobooks",
+          "ru": "Аудиокниги"
+        },
+        "icon": "book-open",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "radio",
+        "name": {
+          "en": "Radio",
+          "ru": "Радио"
+        },
+        "icon": "broadcast",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "playlists",
+        "name": {
+          "en": "Playlists",
+          "ru": "Плейлисты"
+        },
+        "icon": "playlist",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "queue",
+        "name": {
+          "en": "Queue",
+          "ru": "Очередь"
+        },
+        "icon": "queue",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      },
+      {
+        "id": "stats",
+        "name": {
+          "en": "Statistics",
+          "ru": "Статистика"
+        },
+        "icon": "chart-bar",
+        "kind": "page",
+        "minWidth": 320,
+        "minHeight": 320,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.1.0-alpha.3"
+        ]
+      }
+    ]
+  }
 }

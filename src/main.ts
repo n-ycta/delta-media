@@ -1,6 +1,11 @@
-import {styledControls} from './controls';
-import {RadioView} from './radio-view';
-import {mediaSurfaces,validSurface,hiddenSurfaces,watchPresentation} from './surfaces';
+import { styledControls } from "./controls";
+import { RadioView } from "./radio-view";
+import {
+  mediaSurfaces,
+  validSurface,
+  hiddenSurfaces,
+  watchPresentation,
+} from "./surfaces";
 import { connectPlugin, type AppContext } from "@delta/ui/sdk/client";
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
@@ -93,7 +98,9 @@ const icons = Object.fromEntries(
 let state: State,
   storage: Storage,
   player: Player,
-  view: string = validSurface(launch.get("surface"))?launch.get("surface")!:"home",
+  view: string = validSurface(launch.get("surface"))
+    ? launch.get("surface")!
+    : "home",
   query = "",
   selectedSources = new Set<string>(),
   sort = "added",
@@ -145,7 +152,7 @@ function labels(): Record<string, string> {
     video: t("Видео", "Video"),
     podcast: t("Подкасты", "Podcasts"),
     audiobook: t("Аудиокниги", "Audiobooks"),
-    radio: t("Эфиры", "Live"),
+    radio: t("Радио", "Radio"),
     favorites: t("Избранное", "Favorites"),
     history: t("История", "History"),
     playlists: t("Плейлисты", "Playlists"),
@@ -229,10 +236,43 @@ function filtered() {
 function row(m: Media, index: number) {
   return `<article class="media-row" data-id="${m.id}"><button class="art ${m.kind}" data-action="play" data-id="${m.id}" aria-label="${t("Воспроизвести", "Play")} ${esc(m.title)}">${m.artwork ? `<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">` : icons[m.kind as keyof typeof icons] || "▷"}</button><button class="media-title" data-action="details" data-id="${m.id}"><strong>${esc(m.title)}</strong><span>${esc(m.artist || m.album || "—")}</span>${m.position > 0 ? `<small>${t("Продолжить с", "Resume at")} ${time(m.position)}</small>` : ""}</button><span class="source-tag">${esc(m.source)}</span><span class="row-time">${m.kind === "radio" || m.kind === "live" ? "LIVE" : time(m.duration)}</span><button data-action="favorite" data-id="${m.id}" aria-pressed="${m.favorite}" aria-label="${t("Избранное", "Favorite")}">${icon("favorites")}</button><button data-action="enqueue" data-id="${m.id}" aria-label="${t("В очередь", "Add to queue")}">${icon("plus")}</button>${view === "queue" ? `<button data-action="queue-up" data-index="${index}" aria-label="Move up">${icon("arrow-up")}</button><button data-action="queue-remove" data-index="${index}" aria-label="Remove from queue">${icon("close")}</button>` : ""}</article>`;
 }
-const hiddenViews=hiddenSurfaces();
-const radio=new RadioView(t,()=>render(),async m=>{const existing=state.media.find(v=>v.source===m.source&&v.sourceKey===m.sourceKey);if(!existing)state.media.push(m);const id=existing?.id||m.id;let i=state.queue.indexOf(id);if(i<0){state.queue.push(id);i=state.queue.length-1}await persist();await player.load(i);render()});
-watchPresentation((surface,nextTheme,compact)=>{if(nextTheme){theme=nextTheme;document.documentElement.dataset.theme=theme}if(surface){view=surface;query='';collectionId=''}document.documentElement.classList.toggle('media-fragment',compact);if(state)render()});
-document.documentElement.classList.toggle('media-fragment',launch.get('chrome')==='0'&&validSurface(launch.get('surface')));
+const hiddenViews = hiddenSurfaces();
+const radio = new RadioView(
+  t,
+  () => render(),
+  async (m) => {
+    const existing = state.media.find(
+      (v) => v.source === m.source && v.sourceKey === m.sourceKey,
+    );
+    if (!existing) state.media.push(m);
+    const id = existing?.id || m.id;
+    let i = state.queue.indexOf(id);
+    if (i < 0) {
+      state.queue.push(id);
+      i = state.queue.length - 1;
+    }
+    await persist();
+    await player.load(i);
+    render();
+  },
+);
+watchPresentation((surface, nextTheme, compact) => {
+  if (nextTheme) {
+    theme = nextTheme;
+    document.documentElement.dataset.theme = theme;
+  }
+  if (surface) {
+    view = surface;
+    query = "";
+    collectionId = "";
+  }
+  document.documentElement.classList.toggle("media-fragment", compact);
+  if (state) render();
+});
+document.documentElement.classList.toggle(
+  "media-fragment",
+  launch.get("chrome") === "0" && validSurface(launch.get("surface")),
+);
 function render() {
   const label = labels();
   const crumb = document.querySelector("#breadcrumb");
@@ -253,7 +293,10 @@ function render() {
     target.innerHTML = `<div class="heading"><h1>${label[view]}</h1></div><div class="collection-grid">${groups.map((g) => `<button class="collection-card" data-action="collection" data-id="${esc(encodeURIComponent(g.key))}"><span class="collection-art">${g.artwork ? `<img src="${esc(g.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : icon(view)}</span><strong>${esc(g.name)}</strong><small>${esc(g.artist || "")}${g.artist ? " · " : ""}${g.items.length}</small></button>`).join("")}</div>${groups.length ? "" : `<div class="empty"><span>${icon(view)}</span><h2>${t("Пусто", "Empty")}</h2></div>`}`;
     return;
   }
-  if(view==='radio'){target.innerHTML=radio.render(query,row);return;}
+  if (view === "radio") {
+    target.innerHTML = radio.render(query, row, filtered());
+    return;
+  }
   if (view === "settings") {
     target.innerHTML = `<div class="heading"><h1>${label.settings}</h1></div><section class="settings-panel"><label for="language-select">${t("Язык", "Language")}</label><select id="language-select"><option value="en" ${language === "en" ? "selected" : ""}>English</option><option value="ru" ${language === "ru" ? "selected" : ""}>Русский</option></select><label for="theme-select">${t("Тема", "Theme")}</label><select id="theme-select"><option value="light" ${theme === "light" ? "selected" : ""}>${t("Светлая", "Light")}</option><option value="dark" ${theme === "dark" ? "selected" : ""}>${t("Тёмная", "Dark")}</option></select></section>`;
     target.querySelector<HTMLSelectElement>("#language-select")!.onchange = (
@@ -275,7 +318,28 @@ function render() {
         theme === "dark" ? "sun" : "moon",
       );
     };
-    const panel=document.createElement('section');panel.className='surface-settings';panel.innerHTML=`<h2>${t('Вкладки','Tabs')}</h2><div>${mediaSurfaces.filter(id=>!['settings','queue'].includes(id)).map(id=>`<label><input type="checkbox" data-surface="${id}" ${hiddenViews.has(id)?'':'checked'}><span>${label[id]||id}</span></label>`).join('')}</div>`;panel.addEventListener('change',e=>{const el=e.target as HTMLInputElement;if(!el.dataset.surface)return;el.checked?hiddenViews.delete(el.dataset.surface):hiddenViews.add(el.dataset.surface);localStorage.setItem('delta-media.hidden-views',JSON.stringify([...hiddenViews]));render()});target.append(panel);
+    const panel = document.createElement("section");
+    panel.className = "surface-settings";
+    panel.innerHTML = `<h2>${t("Вкладки", "Tabs")}</h2><div>${mediaSurfaces
+      .filter((id) => !["settings", "queue"].includes(id))
+      .map(
+        (id) =>
+          `<label><input type="checkbox" data-surface="${id}" ${hiddenViews.has(id) ? "" : "checked"}><span>${label[id] || id}</span></label>`,
+      )
+      .join("")}</div>`;
+    panel.addEventListener("change", (e) => {
+      const el = e.target as HTMLInputElement;
+      if (!el.dataset.surface) return;
+      el.checked
+        ? hiddenViews.delete(el.dataset.surface)
+        : hiddenViews.add(el.dataset.surface);
+      localStorage.setItem(
+        "delta-media.hidden-views",
+        JSON.stringify([...hiddenViews]),
+      );
+      render();
+    });
+    target.append(panel);
     return;
   }
   if (view === "sources") {
@@ -552,10 +616,18 @@ const actionHandlers: Record<
   string,
   (el: HTMLElement) => Promise<unknown> | unknown
 > = {
-  'radio-refresh':()=>radio.act('radio-refresh'),
-  'radio-back':()=>{query='';document.querySelector<HTMLInputElement>('#search')!.value='';return radio.act('radio-back')},
-  'radio-play':el=>radio.act('radio-play',el.dataset.id),
-  'radio-tracks':el=>{query='';document.querySelector<HTMLInputElement>('#search')!.value='';return radio.act('radio-tracks',el.dataset.id)},
+  "radio-refresh": () => radio.act("radio-refresh"),
+  "radio-back": () => {
+    query = "";
+    document.querySelector<HTMLInputElement>("#search")!.value = "";
+    return radio.act("radio-back");
+  },
+  "radio-play": (el) => radio.act("radio-play", el.dataset.id),
+  "radio-tracks": (el) => {
+    query = "";
+    document.querySelector<HTMLInputElement>("#search")!.value = "";
+    return radio.act("radio-tracks", el.dataset.id);
+  },
   theme: () => {
     theme = theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = theme;
@@ -593,7 +665,11 @@ const actionHandlers: Record<
   },
   play: async (el) => {
     const id = el.dataset.id!;
-    const track=radio.find(id);if(track&&!state.media.some(m=>m.id===id)){state.media.push(track);await persist()}
+    const track = radio.find(id);
+    if (track && !state.media.some((m) => m.id === id)) {
+      state.media.push(track);
+      await persist();
+    }
     let i = state.queue.indexOf(id);
     if (i < 0) {
       state.queue.push(id);
@@ -671,7 +747,14 @@ const actionHandlers: Record<
     modal(
       `<h2>${t("Плейлист", "Playlist")}</h2><form id="playlist-form">${input("name", t("Название", "Name"))}<label class="check"><input type="checkbox" name="smart">${t("Авто", "Smart")}</label><fieldset id="smart-fields" hidden disabled>${input("query", t("Поиск", "Search"))}${input("tag", t("Тег", "Tag"))}<label class="check"><input type="checkbox" name="favorite">${t("Избранное", "Favorites")}</label></fieldset><button type="submit" class="primary">${icon("plus")} ${t("Создать", "Create")}</button></form>`,
     );
-    document.querySelector<HTMLInputElement>('#playlist-form [name=smart]')!.onchange = (e) => {const enabled=(e.target as HTMLInputElement).checked,fields=document.querySelector<HTMLFieldSetElement>('#smart-fields')!;fields.hidden=!enabled;fields.disabled=!enabled;};
+    document.querySelector<HTMLInputElement>(
+      "#playlist-form [name=smart]",
+    )!.onchange = (e) => {
+      const enabled = (e.target as HTMLInputElement).checked,
+        fields = document.querySelector<HTMLFieldSetElement>("#smart-fields")!;
+      fields.hidden = !enabled;
+      fields.disabled = !enabled;
+    };
     document.querySelector<HTMLFormElement>("#playlist-form")!.onsubmit = (
       e,
     ) => {
@@ -821,7 +904,14 @@ app.addEventListener("click", (e) => {
   const el = (e.target as Element).closest<HTMLElement>("[data-action]");
   if (el) {
     e.preventDefault();
-    run(async()=>{const track=el.dataset.id&&radio.find(el.dataset.id);if(track&&!state.media.some(m=>m.id===track.id)){state.media.push(track);await persist()}return actionHandlers[el.dataset.action!]?.(el)});
+    run(async () => {
+      const track = el.dataset.id && radio.find(el.dataset.id);
+      if (track && !state.media.some((m) => m.id === track.id)) {
+        state.media.push(track);
+        await persist();
+      }
+      return actionHandlers[el.dataset.action!]?.(el);
+    });
   }
 });
 async function boot() {
