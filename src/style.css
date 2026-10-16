@@ -1089,8 +1089,8 @@ hr {
   align-items: center;
   min-height: 36px;
 }
-.media-fragment #app {
-  grid-template-columns: minmax(0, 1fr);
+.media-fragment .workspace {
+  margin-left: 0;
 }
 .media-fragment aside,
 .media-fragment .breadcrumbs {
