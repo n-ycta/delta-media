@@ -13,7 +13,9 @@ const server = createServer(async (req, res) => {
     );
     const p = path.resolve(root, "." + (rel === "/" ? "/index.html" : rel));
     if (!p.startsWith(root + path.sep)) throw Error();
-    const data = await fs.readFile(rel === '/tone.wav' ? path.resolve('tests/fixtures/tone.wav') : p);
+    const data = await fs.readFile(
+      rel === "/tone.wav" ? path.resolve("tests/fixtures/tone.wav") : p,
+    );
     const mime =
       {
         ".html": "text/html",
@@ -87,19 +89,21 @@ try {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   results.push("Editable metadata, LRC and chapters persisted");
   const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>Test feed</title><item><guid>one</guid><title>Test episode</title><enclosure url="${origin}/tone.wav" type="audio/wav"/></item><item><title>Unsafe</title><enclosure url="javascript:alert(1)"/></item></channel></rss>`;
-  await page
-    .locator("#files")
-    .setInputFiles({
-      name: "feed.xml",
-      mimeType: "text/xml",
-      buffer: Buffer.from(feed),
-    });
+  await page.locator("#files").setInputFiles({
+    name: "feed.xml",
+    mimeType: "text/xml",
+    buffer: Buffer.from(feed),
+  });
   await page.getByText("Test episode", { exact: true }).waitFor();
   assert.equal(await page.locator(".media-row").count(), 2);
   results.push("RSS enclosure parsed; unsafe source excluded");
-  await page.locator('[data-action=play][aria-label="Play Test episode"]').click();
-  await page.waitForFunction(()=>document.querySelector('video').currentTime > .3);
-  results.push('RSS enclosure: real HTTP audio playback');
+  await page
+    .locator('[data-action=play][aria-label="Play Test episode"]')
+    .click();
+  await page.waitForFunction(
+    () => document.querySelector("video").currentTime > 0.3,
+  );
+  results.push("RSS enclosure: real HTTP audio playback");
 
   await page.locator("#files").setInputFiles("tests/fixtures/picture.webm");
   await page.locator('[data-action=play][aria-label="Play picture"]').click();
@@ -173,9 +177,12 @@ try {
     () => document.documentElement.dataset.theme === "light",
   );
   results.push("Light/dark theme toggle persists");
-  await page.locator("[data-action=language]").click();
+  assert.equal(await page.locator("header [data-action=language]").count(), 0);
+  await page.locator("[data-action=view][data-view=settings]").click();
+  await page.screenshot({path:path.join(output,"delta-media-settings-mobile.png"),fullPage:false});
+  await page.locator("#language-select").selectOption("ru");
   await page.getByRole("button", { name: "Медиатека", exact: false }).waitFor();
-  results.push("RU / EN switch survives restart");
+  results.push("Language changes only in Settings and survives restart");
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(

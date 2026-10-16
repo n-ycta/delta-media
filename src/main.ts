@@ -33,6 +33,7 @@ let theme =
       ? "dark"
       : "light";
 document.documentElement.dataset.theme = theme;
+document.documentElement.lang = language;
 const esc = (value: unknown) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -60,6 +61,7 @@ const icons = Object.fromEntries(
     "sources",
     "stats",
     "queue",
+    "settings",
   ].map((name) => [name, icon(name)]),
 );
 let state: State,
@@ -121,10 +123,11 @@ function labels(): Record<string, string> {
     sources: t("Источники", "Sources"),
     stats: t("Статистика", "Listening"),
     queue: t("Очередь", "Queue"),
+    settings: t("Настройки", "Settings"),
   };
 }
 function shell() {
-  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>media 0.1</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="language" title="Language">${icon('translate')} ${language === "ru" ? "EN" : "RU"}</button><button data-action="import" class="primary">${icon("plus")} ${t("Импорт", "Import")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>media 0.1</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary">${icon("plus")} ${t("Импорт", "Import")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
   document
     .querySelector<HTMLInputElement>("#search")!
     .addEventListener("input", (e) => {
@@ -202,6 +205,29 @@ function render() {
     )
     .join("");
   const target = document.querySelector("#view")!;
+  if (view === "settings") {
+    target.innerHTML = `<div class="heading"><h1>${label.settings}</h1></div><section class="settings-panel"><label for="language-select">${t("Язык", "Language")}</label><select id="language-select"><option value="en" ${language === "en" ? "selected" : ""}>English</option><option value="ru" ${language === "ru" ? "selected" : ""}>Русский</option></select><label for="theme-select">${t("Тема", "Theme")}</label><select id="theme-select"><option value="light" ${theme === "light" ? "selected" : ""}>${t("Светлая", "Light")}</option><option value="dark" ${theme === "dark" ? "selected" : ""}>${t("Тёмная", "Dark")}</option></select></section>`;
+    target.querySelector<HTMLSelectElement>("#language-select")!.onchange = (
+      e,
+    ) => {
+      localStorage.setItem(
+        "delta-media.language",
+        (e.target as HTMLSelectElement).value,
+      );
+      location.reload();
+    };
+    target.querySelector<HTMLSelectElement>("#theme-select")!.onchange = (
+      e,
+    ) => {
+      theme = (e.target as HTMLSelectElement).value;
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem("delta-media.theme", theme);
+      document.querySelector("[data-action=theme]")!.innerHTML = icon(
+        theme === "dark" ? "sun" : "moon",
+      );
+    };
+    return;
+  }
   if (view === "sources") {
     target.innerHTML = `<div class="heading"><div><h1>${label.sources}</h1></div></div><div class="source-grid">${adapters
       .map(
@@ -482,13 +508,6 @@ const actionHandlers: Record<
     document.querySelector<HTMLDialogElement>("#dialog")!.close();
     document.querySelector<HTMLInputElement>("#files")!.click();
   },
-  language: () => {
-    localStorage.setItem(
-      "delta-media.language",
-      language === "ru" ? "en" : "ru",
-    );
-    location.reload();
-  },
   source: (el) => {
     const id = el.dataset.id!;
     selectedSources.has(id)
@@ -750,12 +769,7 @@ async function boot() {
     ),
   );
   window.addEventListener("online", () =>
-    notify(
-      t(
-        "Сеть восстановлена.",
-        "Online.",
-      ),
-    ),
+    notify(t("Сеть восстановлена.", "Online.")),
   );
 }
 boot().catch((e) => {

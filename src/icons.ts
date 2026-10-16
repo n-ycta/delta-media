@@ -29,11 +29,15 @@ import sun from "@phosphor-icons/core/assets/regular/sun.svg?raw";
 import moon from "@phosphor-icons/core/assets/regular/moon.svg?raw";
 import download from "@phosphor-icons/core/assets/regular/download-simple.svg?raw";
 import hardDrive from "@phosphor-icons/core/assets/regular/hard-drive.svg?raw";
-import save from '@phosphor-icons/core/assets/regular/floppy-disk.svg?raw';
-import trash from '@phosphor-icons/core/assets/regular/trash.svg?raw';
-import translate from '@phosphor-icons/core/assets/regular/translate.svg?raw';
+import save from "@phosphor-icons/core/assets/regular/floppy-disk.svg?raw";
+import trash from "@phosphor-icons/core/assets/regular/trash.svg?raw";
+import translate from "@phosphor-icons/core/assets/regular/translate.svg?raw";
+import settings from "@phosphor-icons/core/assets/regular/gear.svg?raw";
 const icons: Record<string, string> = {
- save,trash,translate,
+  settings,
+  save,
+  trash,
+  translate,
   sun,
   moon,
   download,

@@ -940,3 +940,30 @@ hr {
     margin: 16px 16px 0;
   }
 }
+
+.settings-panel {
+  display: grid;
+  grid-template-columns: 1fr minmax(150px, 240px);
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  max-width: 700px;
+}
+.settings-panel label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.settings-panel select {
+  width: 100%;
+}
+@media (max-width: 740px) {
+  .settings-panel {
+    grid-template-columns: 1fr minmax(130px, 180px);
+  }
+  .settings-panel select {
+    min-height: 44px;
+  }
+}
