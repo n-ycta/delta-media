@@ -1,5 +1,6 @@
 import {
   directUrl,
+  parseSmartRule,
   newMedia,
   type State,
   type Media,
@@ -97,6 +98,7 @@ export function importPortable(text: string): {
       id: crypto.randomUUID(),
       name: p.name.slice(0, 512),
       items: p.items.map((id: string) => remap.get(id)).filter(Boolean),
+      ...(parseSmartRule(p.rule) ? { rule: parseSmartRule(p.rule) } : {}),
     }));
   return { media, playlists, unavailable };
 }

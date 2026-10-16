@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   newMedia,
+  collections,
+  playlistMedia,
+  parseSmartRule,
   deduplicate,
   searchMedia,
   nextIndex,
@@ -117,5 +120,45 @@ test("portable metadata import rejects unsafe URLs, keeps playlist order and rep
   ]);
   assert.throws(() =>
     importPortable('{"version":99,"media":[],"playlists":[]}'),
+  );
+});
+
+test("artist/album collections preserve distinct artist releases and searchable metadata", () => {
+  const a = newMedia("local", "a", "One"),
+    b = newMedia("local", "b", "Two");
+  a.artist = "Aster";
+  b.artist = "Other";
+  a.album = b.album = "Volume 1";
+  assert.equal(collections([a, b], "album").length, 2);
+  assert.equal(collections([a, b], "artist")[0].name, "Aster");
+});
+test("smart playlists recompute membership and manual playlists retain repeats", () => {
+  const a = newMedia("local", "a", "One"),
+    b = newMedia("local", "b", "Two");
+  a.artist = "Aster";
+  b.artist = "Aster";
+  a.favorite = true;
+  b.favorite = false;
+  a.tags = ["Ambient"];
+  const p = {
+    id: "p",
+    name: "Ambient",
+    items: [],
+    rule: { query: "aster", favorite: true, tag: "ambient" },
+  };
+  assert.deepEqual(playlistMedia(p, [a, b]), [a]);
+  b.favorite = true;
+  b.tags = ["ambient"];
+  assert.equal(playlistMedia(p, [a, b]).length, 2);
+  assert.deepEqual(
+    playlistMedia({ id: "m", name: "Manual", items: [b.id, a.id, b.id] }, [
+      a,
+      b,
+    ]),
+    [b, a, b],
+  );
+  assert.deepEqual(
+    parseSmartRule({ query: "x", favorite: true, eval: "no", minPlays: -1 }),
+    { query: "x", favorite: true },
   );
 });

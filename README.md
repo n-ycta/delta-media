@@ -22,6 +22,9 @@ Serve `dist/` from a static HTTPS host or bundle it in a compatible isolated nat
 
 ## Available
 
+- Artist and album collections generated from editable library metadata.
+- Smart playlists evaluated against the current library (search, tags and favorites), with validated portable rule import/export.
+
 - Import local audio/video Blobs into IndexedDB without sending file bytes through JSON IPC. The browser streams from the Blob; import does not read the whole media file into JS memory.
 - Direct HTTPS audio/video links, browser-supported radio/live streams; no web page extraction or DRM bypass.
 - RSS/Atom file import and bounded HTTPS feed fetch, explicit media enclosures only. Remote fetch requires CORS. HTTP streams are rejected except loopback development URLs. There is no proxy.

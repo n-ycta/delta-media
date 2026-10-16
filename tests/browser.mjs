@@ -88,6 +88,24 @@ try {
     .fill("[00:00]Opening\n[00:06]Second line");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   results.push("Editable metadata, LRC and chapters persisted");
+  await page.locator("[data-action=view][data-view=artists]").click();
+  await page.getByRole("button", { name: "Aster", exact: false }).click();
+  assert.equal(await page.locator(".media-row").count(), 1);
+  await page.locator("[data-action=view][data-view=albums]").click();
+  await page.getByRole("button", { name: "Night field", exact: false }).click();
+  assert.equal(await page.locator(".media-row").count(), 1);
+  results.push("Artist and album pages resolve actual library entries");
+  await page.locator("[data-action=view][data-view=playlists]").click();
+  await page.locator("[data-action=new-playlist]").click();
+  await page.locator("#playlist-form input[name=name]").fill("Aster favorites");
+  await page.locator("#playlist-form input[name=smart]").check();
+  await page.locator("#playlist-form input[name=query]").fill("Aster");
+  await page.locator("#playlist-form input[name=favorite]").check();
+  await page.locator("#playlist-form").getByRole("button", { name: "Create", exact: true }).click();
+  assert.equal(await page.locator(".media-row").count(), 1);
+  results.push("Smart playlist computes favorites from saved metadata");
+  await page.locator("[data-action=view][data-view=library]").click();
+
   const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>Test feed</title><item><guid>one</guid><title>Test episode</title><enclosure url="${origin}/tone.wav" type="audio/wav"/></item><item><title>Unsafe</title><enclosure url="javascript:alert(1)"/></item></channel></rss>`;
   await page.locator("#files").setInputFiles({
     name: "feed.xml",
@@ -179,14 +197,17 @@ try {
   results.push("Light/dark theme toggle persists");
   assert.equal(await page.locator("header [data-action=language]").count(), 0);
   await page.locator("[data-action=view][data-view=settings]").click();
-  await page.screenshot({path:path.join(output,"delta-media-settings-mobile.png"),fullPage:false});
+  await page.screenshot({
+    path: path.join(output, "delta-media-settings-mobile.png"),
+    fullPage: false,
+  });
   await page.locator("#language-select").selectOption("ru");
   await page.getByRole("button", { name: "Медиатека", exact: false }).waitFor();
   results.push("Language changes only in Settings and survives restart");
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await context.setOffline(true);
   await page.reload();
-  await page.getByRole("button", {name:"Медиатека",exact:false}).waitFor();
+  await page.getByRole("button", { name: "Медиатека", exact: false }).waitFor();
   results.push("Cold offline restart loads the cached application shell");
   await context.setOffline(false);
   assert.deepEqual(errors, []);

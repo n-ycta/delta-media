@@ -33,7 +33,13 @@ import save from "@phosphor-icons/core/assets/regular/floppy-disk.svg?raw";
 import trash from "@phosphor-icons/core/assets/regular/trash.svg?raw";
 import translate from "@phosphor-icons/core/assets/regular/translate.svg?raw";
 import settings from "@phosphor-icons/core/assets/regular/gear.svg?raw";
+import artists from "@phosphor-icons/core/assets/regular/users-three.svg?raw";
+import albums from "@phosphor-icons/core/assets/regular/vinyl-record.svg?raw";
+import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
 const icons: Record<string, string> = {
+  artists,
+  albums,
+  "arrow-left": arrowLeft,
   settings,
   save,
   trash,

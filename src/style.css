@@ -967,3 +967,14 @@ hr {
     min-height: 44px;
   }
 }
+
+.collection-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;}
+.collection-card {display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:12px;min-width:0;height:auto;background:var(--surface);border:1px solid var(--rule);}
+.collection-card strong {max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.collection-card small {color:var(--muted);}
+.collection-art {display:grid;place-items:center;width:100%;aspect-ratio:1;background:var(--surface-2);border:1px solid var(--rule);border-radius:var(--r-sm);overflow:hidden;}
+.collection-art img {width:100%;height:100%;object-fit:cover;}
+.collection-art svg {width:32px;height:32px;color:var(--muted);}
+
+#smart-fields { border: 0; padding: 0; margin: 0; }
+#smart-fields[hidden] { display: none; }

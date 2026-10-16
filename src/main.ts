@@ -1,4 +1,4 @@
-import {connectPlugin, type AppContext} from "@delta/ui/sdk/client";
+import { connectPlugin, type AppContext } from "@delta/ui/sdk/client";
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
@@ -13,6 +13,8 @@ import { Player } from "./player";
 import { adapters, parseFeed, fetchFeed } from "./adapters";
 import {
   deduplicate,
+  collections,
+  playlistMedia,
   directUrl,
   newMedia,
   searchMedia,
@@ -33,12 +35,18 @@ if (parent !== window && launch.get("embedded") === "1") {
     if (!parentOrigin) throw Error("missing_parent_origin");
     const connection = await connectPlugin(parentOrigin);
     hostContext = connection.context;
-    window.addEventListener("pagehide", () => connection.close(), {once:true});
-  } catch (e) { sdkError = "Delta SDK: " + (e as Error).message; }
+    window.addEventListener("pagehide", () => connection.close(), {
+      once: true,
+    });
+  } catch (e) {
+    sdkError = "Delta SDK: " + (e as Error).message;
+  }
 }
-let language = localStorage.getItem("delta-media.language") || hostContext?.language || "en";
+let language =
+  localStorage.getItem("delta-media.language") || hostContext?.language || "en";
 const t = (ru: string, en: string) => (language === "ru" ? ru : en);
-const preference = localStorage.getItem("delta-media.theme") || hostContext?.theme;
+const preference =
+  localStorage.getItem("delta-media.theme") || hostContext?.theme;
 let theme =
   preference === "light" || preference === "dark"
     ? preference
@@ -64,6 +72,8 @@ const icons = Object.fromEntries(
     "home",
     "library",
     "audio",
+    "artists",
+    "albums",
     "video",
     "podcast",
     "audiobook",
@@ -85,6 +95,7 @@ let state: State,
   selectedSources = new Set<string>(),
   sort = "added",
   playlistId = "",
+  collectionId = "",
   selectedId = "",
   saving = Promise.resolve(),
   saveError = false;
@@ -126,6 +137,8 @@ function labels(): Record<string, string> {
     home: t("Главная", "Home"),
     library: t("Медиатека", "Library"),
     audio: t("Музыка", "Music"),
+    artists: t("Исполнители", "Artists"),
+    albums: t("Альбомы", "Albums"),
     video: t("Видео", "Video"),
     podcast: t("Подкасты", "Podcasts"),
     audiobook: t("Аудиокниги", "Audiobooks"),
@@ -170,6 +183,13 @@ function shell() {
 }
 function filtered() {
   let rows = searchMedia(state.media, query, selectedSources);
+  if (["artists", "albums"].includes(view) && collectionId) {
+    const group = collections(
+      state.media,
+      view === "artists" ? "artist" : "album",
+    ).find((g) => g.key === collectionId);
+    rows = rows.filter((m) => group?.items.some((item) => item.id === m.id));
+  }
   if (view === "favorites") rows = rows.filter((m) => m.favorite);
   if (["audio", "video", "podcast", "audiobook"].includes(view))
     rows = rows.filter((m) => m.kind === view);
@@ -190,7 +210,7 @@ function filtered() {
       .filter((m): m is Media => !!m);
   else if (view === "playlists" && playlistId) {
     const p = state.playlists.find((p) => p.id === playlistId);
-    rows = (p?.items || [])
+    rows = (p ? playlistMedia(p, state.media).map((m) => m.id) : [])
       .map((id) => rows.find((m) => m.id === id))
       .filter((m): m is Media => !!m);
   } else
@@ -218,6 +238,14 @@ function render() {
     )
     .join("");
   const target = document.querySelector("#view")!;
+  if (["artists", "albums"].includes(view) && !collectionId) {
+    const groups = collections(
+      searchMedia(state.media, query, selectedSources),
+      view === "artists" ? "artist" : "album",
+    );
+    target.innerHTML = `<div class="heading"><h1>${label[view]}</h1></div><div class="collection-grid">${groups.map((g) => `<button class="collection-card" data-action="collection" data-id="${esc(encodeURIComponent(g.key))}"><span class="collection-art">${g.artwork ? `<img src="${esc(g.artwork)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : icon(view)}</span><strong>${esc(g.name)}</strong><small>${esc(g.artist || "")}${g.artist ? " · " : ""}${g.items.length}</small></button>`).join("")}</div>${groups.length ? "" : `<div class="empty"><span>${icon(view)}</span><h2>${t("Пусто", "Empty")}</h2></div>`}`;
+    return;
+  }
   if (view === "settings") {
     target.innerHTML = `<div class="heading"><h1>${label.settings}</h1></div><section class="settings-panel"><label for="language-select">${t("Язык", "Language")}</label><select id="language-select"><option value="en" ${language === "en" ? "selected" : ""}>English</option><option value="ru" ${language === "ru" ? "selected" : ""}>Русский</option></select><label for="theme-select">${t("Тема", "Theme")}</label><select id="theme-select"><option value="light" ${theme === "light" ? "selected" : ""}>${t("Светлая", "Light")}</option><option value="dark" ${theme === "dark" ? "selected" : ""}>${t("Тёмная", "Dark")}</option></select></section>`;
     target.querySelector<HTMLSelectElement>("#language-select")!.onchange = (
@@ -270,9 +298,14 @@ function render() {
     title =
       view === "playlists" && playlistId
         ? state.playlists.find((p) => p.id === playlistId)?.name
-        : label[view];
-  target.innerHTML = `<div class="heading"><div><h1>${view === "home" ? t("Продолжить", "Continue listening") : esc(title)}</h1><p>${rows.length} ${t("записей", "items")}${view === "queue" ? " · " + t("Порядок сохраняется", "Order is saved") : ""}</p></div><div class="heading-actions">${view === "playlists" ? `<button data-action="new-playlist">${icon("plus")} ${t("Создать", "Create")}</button>${playlistId ? `<button data-action="export-playlist">${icon("download")} M3U</button><button data-action="export-playlist" data-format="pls">${icon("download")} PLS</button>` : ""}` : ""}${rows.length ? `<button class="primary" data-action="play-all">${icon("play")} ${t("Слушать", "Play")}</button>` : ""}</div></div>
- ${view === "playlists" ? `<div class="chips">${state.playlists.map((p) => `<button class="${playlistId === p.id ? "selected" : ""}" data-action="playlist" data-id="${p.id}">${esc(p.name)} · ${p.items.length}</button>`).join("")}</div>` : ""}
+        : collectionId && ["artists", "albums"].includes(view)
+          ? collections(
+              state.media,
+              view === "artists" ? "artist" : "album",
+            ).find((g) => g.key === collectionId)?.name
+          : label[view];
+  target.innerHTML = `<div class="heading"><div>${collectionId && ["artists", "albums"].includes(view) ? `<button data-action="collection-back" aria-label="${t("Назад", "Back")}">${icon("arrow-left")}</button>` : ""}<h1>${view === "home" ? t("Продолжить", "Continue listening") : esc(title)}</h1><p>${rows.length} ${t("записей", "items")}${view === "queue" ? " · " + t("Порядок сохраняется", "Order is saved") : ""}</p></div><div class="heading-actions">${view === "playlists" ? `<button data-action="new-playlist">${icon("plus")} ${t("Создать", "Create")}</button>${playlistId ? `<button data-action="export-playlist">${icon("download")} M3U</button><button data-action="export-playlist" data-format="pls">${icon("download")} PLS</button>` : ""}` : ""}${rows.length ? `<button class="primary" data-action="play-all">${icon("play")} ${t("Слушать", "Play")}</button>` : ""}</div></div>
+ ${view === "playlists" ? `<div class="chips">${state.playlists.map((p) => `<button class="${playlistId === p.id ? "selected" : ""}" data-action="playlist" data-id="${p.id}">${esc(p.name)} · ${playlistMedia(p, state.media).length}</button>`).join("")}</div>` : ""}
  <div class="filters"><div class="chips">${adapters
    .filter((a) => a.status === "ready")
    .map(
@@ -439,7 +472,15 @@ function details(id: string) {
   if (!m) return;
   selectedId = id;
   modal(
-    `<div class="eyebrow">${esc(m.source)} · ${esc(m.kind)}</div><h2>${esc(m.title)}</h2><form id="edit-media">${input("title", t("Название", "Title"), m.title)}${input("artist", t("Исполнитель / автор", "Artist / author"), m.artist)}${input("album", t("Альбом / серия", "Album / series"), m.album)}${input("genre", t("Жанр", "Genre"), m.genre)}${input("tags", t("Теги через запятую", "Comma-separated tags"), m.tags.join(", "))}${input("artwork", t("Обложка: HTTPS URL", "Artwork: HTTPS URL"), m.artwork, "url")}<label>${t("Тип", "Type")}<select name="kind">${(["audio", "video", "podcast", "audiobook", "radio", "live"] as const).map((k) => `<option ${m.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select></label><label>${t("Текст / LRC", "Lyrics / LRC")}<textarea name="lyrics" maxlength="100000">${esc(m.lyrics)}</textarea></label><label>${t("Главы: секунды | название, одна на строку", "Chapters: seconds | title, one per line")}<textarea name="chapters">${esc(m.chapters.map((c) => c.start + " | " + c.title).join("\n"))}</textarea></label><button type="submit" class="primary">${icon("save")} ${t("Сохранить", "Save")}</button><p id="form-error" role="alert"></p></form><hr><h3>${t("Воспроизведение", "Playback")}</h3><button data-action="play" data-id="${m.id}">${icon("play")} ${t("Продолжить", "Resume")}</button><p id="synced-lyrics" class="lyrics">${esc(m.lyrics || t("Нет текста", "No lyrics"))}</p>${m.chapters.map((c) => `<button data-action="chapter" data-id="${m.id}" data-time="${c.start}">${time(c.start)} · ${esc(c.title)}</button>`).join("")}<h3>${t("Закладки", "Bookmarks")}</h3><button data-action="bookmark" data-id="${m.id}">${icon("plus")} ${t("Закладка", "Bookmark")}</button>${m.bookmarks.map((b) => `<button data-action="chapter" data-id="${m.id}" data-time="${b.position}">${time(b.position)} · ${esc(b.note)}</button>`).join("")}<h3>${t("Плейлисты", "Playlists")}</h3>${state.playlists.map((p) => `<button data-action="add-playlist" data-id="${p.id}" data-media="${m.id}">${icon("plus")} ${esc(p.name)}</button>`).join("")}<hr><button data-action="download-local" data-id="${m.id}" ${m.fileId ? "" : "disabled"}>${icon("download")} ${t("Файл", "File")}</button><button data-action="delete" data-id="${m.id}" class="danger">${icon("trash")} ${t("Удалить", "Delete")}</button>`,
+    `<div class="eyebrow">${esc(m.source)} · ${esc(m.kind)}</div><h2>${esc(m.title)}</h2><form id="edit-media">${input("title", t("Название", "Title"), m.title)}${input("artist", t("Исполнитель / автор", "Artist / author"), m.artist)}${input("album", t("Альбом / серия", "Album / series"), m.album)}${input("genre", t("Жанр", "Genre"), m.genre)}${input("tags", t("Теги через запятую", "Comma-separated tags"), m.tags.join(", "))}${input("artwork", t("Обложка: HTTPS URL", "Artwork: HTTPS URL"), m.artwork, "url")}<label>${t("Тип", "Type")}<select name="kind">${(["audio", "video", "podcast", "audiobook", "radio", "live"] as const).map((k) => `<option ${m.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select></label><label>${t("Текст / LRC", "Lyrics / LRC")}<textarea name="lyrics" maxlength="100000">${esc(m.lyrics)}</textarea></label><label>${t("Главы: секунды | название, одна на строку", "Chapters: seconds | title, one per line")}<textarea name="chapters">${esc(m.chapters.map((c) => c.start + " | " + c.title).join("\n"))}</textarea></label><button type="submit" class="primary">${icon("save")} ${t("Сохранить", "Save")}</button><p id="form-error" role="alert"></p></form><hr><h3>${t("Воспроизведение", "Playback")}</h3><button data-action="play" data-id="${m.id}">${icon("play")} ${t("Продолжить", "Resume")}</button><p id="synced-lyrics" class="lyrics">${esc(m.lyrics || t("Нет текста", "No lyrics"))}</p>${m.chapters.map((c) => `<button data-action="chapter" data-id="${m.id}" data-time="${c.start}">${time(c.start)} · ${esc(c.title)}</button>`).join("")}<h3>${t("Закладки", "Bookmarks")}</h3><button data-action="bookmark" data-id="${m.id}">${icon("plus")} ${t("Закладка", "Bookmark")}</button>${m.bookmarks.map((b) => `<button data-action="chapter" data-id="${m.id}" data-time="${b.position}">${time(b.position)} · ${esc(b.note)}</button>`).join("")}<h3>${t("Плейлисты", "Playlists")}</h3>${state.playlists
+      .filter((p) => !p.rule)
+      .map(
+        (p) =>
+          `<button data-action="add-playlist" data-id="${p.id}" data-media="${m.id}">${icon("plus")} ${esc(p.name)}</button>`,
+      )
+      .join(
+        "",
+      )}<hr><button data-action="download-local" data-id="${m.id}" ${m.fileId ? "" : "disabled"}>${icon("download")} ${t("Файл", "File")}</button><button data-action="delete" data-id="${m.id}" class="danger">${icon("trash")} ${t("Удалить", "Delete")}</button>`,
   );
   document.querySelector<HTMLFormElement>("#edit-media")!.onsubmit = (e) => {
     e.preventDefault();
@@ -511,8 +552,17 @@ const actionHandlers: Record<
   },
   view: (el) => {
     view = el.dataset.view!;
+    collectionId = "";
     query = "";
     document.querySelector<HTMLInputElement>("#search")!.value = "";
+    render();
+  },
+  collection: (el) => {
+    collectionId = decodeURIComponent(el.dataset.id!);
+    render();
+  },
+  "collection-back": () => {
+    collectionId = "";
     render();
   },
   import: importDialog,
@@ -605,8 +655,9 @@ const actionHandlers: Record<
   details: (el) => details(el.dataset.id!),
   "new-playlist": () => {
     modal(
-      `<h2>${t("Плейлист", "Playlist")}</h2><form id="playlist-form">${input("name", t("Название", "Name"))}<button type="submit" class="primary">${icon("plus")} ${t("Создать", "Create")}</button></form>`,
+      `<h2>${t("Плейлист", "Playlist")}</h2><form id="playlist-form">${input("name", t("Название", "Name"))}<label class="check"><input type="checkbox" name="smart">${t("Авто", "Smart")}</label><fieldset id="smart-fields" hidden disabled>${input("query", t("Поиск", "Search"))}${input("tag", t("Тег", "Tag"))}<label class="check"><input type="checkbox" name="favorite">${t("Избранное", "Favorites")}</label></fieldset><button type="submit" class="primary">${icon("plus")} ${t("Создать", "Create")}</button></form>`,
     );
+    document.querySelector<HTMLInputElement>('#playlist-form [name=smart]')!.onchange = (e) => {const enabled=(e.target as HTMLInputElement).checked,fields=document.querySelector<HTMLFieldSetElement>('#smart-fields')!;fields.hidden=!enabled;fields.disabled=!enabled;};
     document.querySelector<HTMLFormElement>("#playlist-form")!.onsubmit = (
       e,
     ) => {
@@ -617,7 +668,21 @@ const actionHandlers: Record<
         ).trim();
         if (!name) throw Error("Name required.");
         playlistId = uid();
-        state.playlists.push({ id: playlistId, name, items: [] });
+        const data = new FormData(e.target as HTMLFormElement);
+        state.playlists.push({
+          id: playlistId,
+          name,
+          items: [],
+          ...(data.has("smart")
+            ? {
+                rule: {
+                  query: String(data.get("query") || "").slice(0, 512),
+                  tag: String(data.get("tag") || "").slice(0, 100),
+                  favorite: data.has("favorite"),
+                },
+              }
+            : {}),
+        });
         await persist();
         document.querySelector<HTMLDialogElement>("#dialog")!.close();
         render();
@@ -638,9 +703,7 @@ const actionHandlers: Record<
   "export-playlist": (el) => {
     const p = state.playlists.find((p) => p.id === playlistId);
     if (!p) return;
-    const rows = p.items
-      .map((id) => state.media.find((m) => m.id === id))
-      .filter((m): m is Media => !!m);
+    const rows = playlistMedia(p, state.media);
     const format = el.dataset.format === "pls" ? "pls" : "m3u";
     const out = exportPlaylist(rows, format);
     download(
@@ -748,7 +811,11 @@ app.addEventListener("click", (e) => {
   }
 });
 async function boot() {
-  if ("serviceWorker" in navigator && ["http:","https:"].includes(location.protocol) && !location.hostname.startsWith("deltaapp-")) {
+  if (
+    "serviceWorker" in navigator &&
+    ["http:", "https:"].includes(location.protocol) &&
+    !location.hostname.startsWith("deltaapp-")
+  ) {
     void navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
   storage = await new Storage().open();

@@ -46,10 +46,18 @@ export interface Media {
   lastPlayed?: number;
   feed?: string;
 }
+export interface SmartRule {
+  query?: string;
+  kind?: MediaKind;
+  tag?: string;
+  favorite?: boolean;
+  minPlays?: number;
+}
 export interface Playlist {
   id: string;
   name: string;
   items: string[];
+  rule?: SmartRule;
 }
 export interface HistoryEntry {
   id: string;
@@ -185,4 +193,73 @@ export function parseLrc(input: string): { time: number; text: string }[] {
       }));
     })
     .sort((a, b) => a.time - b.time);
+}
+
+export function playlistMedia(playlist: Playlist, media: Media[]): Media[] {
+  if (!playlist.rule)
+    return playlist.items
+      .map((id) => media.find((m) => m.id === id))
+      .filter((m): m is Media => !!m);
+  const rule = playlist.rule;
+  return searchMedia(media, rule.query || "", new Set(), rule.kind)
+    .filter(
+      (m) =>
+        (!rule.favorite || m.favorite) &&
+        (!rule.tag ||
+          m.tags.some(
+            (t) => t.toLocaleLowerCase() === rule.tag!.toLocaleLowerCase(),
+          )) &&
+        m.plays >= (rule.minPlays || 0),
+    )
+    .sort((a, b) => b.addedAt - a.addedAt);
+}
+export interface MediaCollection {
+  key: string;
+  name: string;
+  artist?: string;
+  artwork?: string;
+  items: Media[];
+}
+export function collections(
+  media: Media[],
+  kind: "artist" | "album",
+): MediaCollection[] {
+  const groups = new Map<string, MediaCollection>();
+  for (const m of media) {
+    const name = (kind === "artist" ? m.artist : m.album)?.trim();
+    if (!name) continue;
+    const artist = kind === "album" ? m.artist?.trim() : undefined;
+    const key = JSON.stringify([
+      name.normalize("NFC").toLocaleLowerCase(),
+      artist?.normalize("NFC").toLocaleLowerCase() || "",
+    ]);
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, name, artist, artwork: m.artwork, items: [] };
+      groups.set(key, group);
+    }
+    group.items.push(m);
+    if (!group.artwork) group.artwork = m.artwork;
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+export function parseSmartRule(input: unknown): SmartRule | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return;
+  const r = input as Record<string, unknown>;
+  const rule: SmartRule = {};
+  if (typeof r.query === "string") rule.query = r.query.slice(0, 512);
+  if (typeof r.tag === "string") rule.tag = r.tag.slice(0, 100);
+  if (r.favorite === true) rule.favorite = true;
+  if (
+    typeof r.kind === "string" &&
+    ["audio", "video", "podcast", "audiobook", "radio", "live"].includes(r.kind)
+  )
+    rule.kind = r.kind as MediaKind;
+  if (
+    typeof r.minPlays === "number" &&
+    Number.isFinite(r.minPlays) &&
+    r.minPlays >= 0
+  )
+    rule.minPlays = Math.min(r.minPlays, 1e9);
+  return rule;
 }
