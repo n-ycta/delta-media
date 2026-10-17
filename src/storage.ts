@@ -89,6 +89,9 @@ export class Storage {
     await done;
     return m;
   }
+  async cache(id:string,blob:Blob) {
+    const tx=this.db.transaction('files','readwrite'),done=completed(tx);tx.objectStore('files').put(blob,id);await done;
+  }
   async removeFile(id: string) {
     const tx = this.db.transaction("files", "readwrite");
     const done = completed(tx);

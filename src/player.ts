@@ -28,7 +28,7 @@ export class Player extends EventTarget {
       this.embed = new EmbedController(
         embedFrame,
         () => {
-          if(this.current?.embed && this.embed){this.current.position=this.embed.position;if(this.embed.duration>0)this.current.duration=this.embed.duration;}
+          if(this.usingEmbed){this.current!.position=this.embed!.position;if(this.embed!.duration>0)this.current!.duration=this.embed!.duration;}
           this.change();
         },
         () =>
@@ -174,20 +174,24 @@ export class Player extends EventTarget {
     }
     this.element.removeAttribute("src");
     this.element.load();
-    if (m.embed && this.embed) {
+    let cached:Blob|undefined;
+    if(m.fileId&&(!m.offlineDeviceId||m.offlineDeviceId===localStorage.getItem('delta-media.device')))try{cached=await this.storage.file(m.fileId);}catch{if(!m.embed&&!m.url)throw Error('Local file unavailable. Reimport it from your device.');}
+    if (generation !== this.generation) return;
+    if (m.embed && this.embed && !cached) {
+      this.embed.close();
       const e = embedUrl(m.embed);
       this.element.hidden = true;
       if ("mediaSession" in navigator)
         navigator.mediaSession.metadata = new MediaMetadata({ title: m.title, artist: m.artist || "", album: m.album || "" });
       m.lastPlayed = Date.now();
       m.plays++;
-      if (autoplay) this.embed.open(e.provider, e.url);
+      if (autoplay) this.embed!.open(e.provider, e.url);
       await this.save();
       this.change();
       return;
     }
     this.embed?.close();
-    const source = m.fileId ? await this.storage.file(m.fileId) : m.url;
+    const source = cached || m.url;
     if (generation !== this.generation) return;
     if (!source) throw Error("This item has no playable source.");
     if (source instanceof Blob) {
@@ -207,27 +211,39 @@ export class Player extends EventTarget {
     this.change();
     if (autoplay) await this.play();
   }
-  get position():number { return this.delegate ? this.current?.position || 0 : this.current?.embed ? this.embed?.position || 0 : this.element.currentTime || 0; }
-  get duration():number { return this.delegate ? this.current?.duration || 0 : this.current?.embed ? this.embed?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
+  private get usingEmbed(): boolean { return !!this.current?.embed && !!this.embed && !this.element.getAttribute('src'); }
+  get position():number { return this.delegate ? this.current?.position || 0 : this.usingEmbed ? this.embed?.position || 0 : this.element.currentTime || 0; }
+  get duration():number { return this.delegate ? this.current?.duration || 0 : this.usingEmbed ? this.embed?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
   volume(value:number){if(this.delegate){void this.delegate('volume',[value]);return;}this.element.volume=value;this.embed?.volume(value);}
   /** True while audio/video or a provider player is playing. */
   get playing(): boolean {
     if(this.delegate)return this.remotePlaying;
-    return this.current?.embed && this.embed ? this.embed.playing : !this.element.paused;
+    return this.usingEmbed ? this.embed!.playing : !this.element.paused;
   }
   pause() {
     if(this.delegate){void this.delegate('pause',[]);return;}
     this.generation++;
-    if (this.current?.embed && this.embed) this.embed.pause();
+    if (this.usingEmbed) this.embed!.pause();
     else this.element.pause();
+  }
+  async stop(): Promise<void> {
+    if (this.delegate) { await this.delegate('stop', []); this.current = undefined; this.remotePlaying = false; return; }
+    this.generation++;
+    this.element.pause();
+    this.embed?.close();
+    this.current = undefined;
+    this.element.removeAttribute('src'); this.element.load(); this.element.hidden = true;
+    if (this.objectUrl) { URL.revokeObjectURL(this.objectUrl); this.objectUrl = ''; }
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+    this.change();
   }
   async play(): Promise<void> {
     if(this.delegate)return this.delegate('play',[]);
-    if (this.current?.embed && this.embed) {
-      if (!this.embed.provider) {
-        const e = embedUrl(this.current.embed);
-        this.embed.open(e.provider, e.url);
-      } else this.embed.play();
+    if (this.usingEmbed) {
+      if (!this.embed!.provider) {
+        const e = embedUrl(this.current!.embed!);
+        this.embed!.open(e.provider, e.url);
+      } else this.embed!.play();
       return;
     }
     const generation = this.generation;
@@ -248,7 +264,7 @@ export class Player extends EventTarget {
   seek(time: number) {
     if(this.delegate){void this.delegate('seek',[time]);return;}
     if (!Number.isFinite(time)) return;
-    if(this.current?.embed && this.embed){this.embed.seek(time);return;}
+    if(this.usingEmbed){this.embed!.seek(time);return;}
     const max = Number.isFinite(this.element.duration)
       ? this.element.duration
       : Infinity;
@@ -274,7 +290,7 @@ export class Player extends EventTarget {
   }
   async previous(): Promise<void> {
     if(this.delegate)return this.delegate('previous',[]);
-    if (this.element.currentTime > 3) {
+    if (this.position > 3) {
       this.seek(0);
       return;
     }

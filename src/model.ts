@@ -31,6 +31,8 @@ export interface Media {
   /** Official provider player (YouTube/SoundCloud/Spotify) when there is no direct stream. */
   embed?: string;
   fileId?: string;
+  offlineJob?: string;
+  offlineDeviceId?: string;
   mime?: string;
   artist?: string;
   album?: string;
@@ -72,6 +74,7 @@ export interface HistoryEntry {
 }
 export interface State {
   version: 1;
+  pendingRemovals?: string[];
   media: Media[];
   playlists: Playlist[];
   queue: string[];
@@ -266,4 +269,18 @@ export function parseSmartRule(input: unknown): SmartRule | undefined {
   )
     rule.minPlays = Math.min(r.minPlays, 1e9);
   return rule;
+}
+
+/** Remove one occurrence, or all occurrences for a membership toggle.
+ * The loaded player may finish independently; Next still selects its successor.
+ */
+export function removeQueued(state: State, id: string, onlyIndex?: number): void {
+  const oldIndex = state.queueIndex;
+  const removed = (i: number) => state.queue[i] === id && (onlyIndex === undefined || i === onlyIndex);
+  let before = 0;
+  for (let i = 0; i < oldIndex; i++) if (removed(i)) before++;
+  const activeRemoved = removed(oldIndex);
+  state.queue = state.queue.filter((_, i) => !removed(i));
+  state.queueIndex = Math.max(-1, oldIndex - before - (activeRemoved ? 1 : 0));
+  if (!state.queue.length) state.queueIndex = 0;
 }

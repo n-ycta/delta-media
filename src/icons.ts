@@ -38,7 +38,17 @@ import settings from "@phosphor-icons/core/assets/regular/gear.svg?raw";
 import artists from "@phosphor-icons/core/assets/regular/users-three.svg?raw";
 import albums from "@phosphor-icons/core/assets/regular/vinyl-record.svg?raw";
 import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
+import check from "@phosphor-icons/core/assets/regular/check.svg?raw";
+import heartFilled from "@phosphor-icons/core/assets/fill/heart-fill.svg?raw";
+import minus from "@phosphor-icons/core/assets/regular/minus.svg?raw";
+import expand from "@phosphor-icons/core/assets/regular/arrows-out.svg?raw";
+import offline from "@phosphor-icons/core/assets/regular/cloud-arrow-down.svg?raw";
+import offlineReady from "@phosphor-icons/core/assets/regular/cloud-check.svg?raw";
 const icons: Record<string, string> = {
+  offline,"offline-ready":offlineReady,
+  minus,expand,
+  check,
+  "heart-filled": heartFilled,
   "arrow-down":arrowDown,
  refresh,
   artists,

@@ -32,7 +32,7 @@ export async function sharedPlayback() {
     if(m.type==='snapshot'&&!primary)update(m.state,m.currentId);
     if(m.type==='mutation'&&primary){update(m.state);snapshot();}
     if(m.type==='playback'&&!primary){player.remotePlaying=m.playing;player.current=state.media.find(v=>v.id===m.currentId);if(player.current&&Number.isFinite(m.position))player.current.position=m.position;changed?.(false);}
-    if(m.type==='command'&&primary&&['load','play','pause','seek','next','previous','toggle','volume'].includes(m.command)){
+    if(m.type==='command'&&primary&&['load','play','pause','seek','next','previous','toggle','volume','stop'].includes(m.command)){
       try{await (player[m.command as keyof Player] as (...args:any[])=>unknown).apply(player,m.args);snapshot();channel.postMessage({type:'result',to:m.from,request:m.request});}catch(e){channel.postMessage({type:'result',to:m.from,request:m.request,error:(e as Error).message});}
     }
     if(m.type==='result'&&m.to===id){const p=pending.get(m.request);if(p){clearTimeout(p.timer);pending.delete(m.request);m.error?p.reject(Error(m.error)):p.resolve();}}

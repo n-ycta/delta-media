@@ -1,3 +1,4 @@
+import {OfflineCache} from "./offline";
 import {analysePlayback} from "./visualizer";
 import { sharedPlayback } from "./shared";
 import { styledControls } from "./controls";
@@ -25,6 +26,7 @@ import { Player } from "./player";
 import { adapters, parseFeed, fetchFeed } from "./adapters";
 import {
   deduplicate,
+  removeQueued,
   collections,
   playlistMedia,
   directUrl,
@@ -63,12 +65,23 @@ if (parent !== window && launch.get("embedded") === "1") {
 }
 const shared = await sharedPlayback();
 let remoteItems: Record<string, any>[] = [], providerRows: Record<string, any>[] = [], searchBusy = false;
+let videoMode = localStorage.getItem('delta-media.video-mode') || 'normal';
+let videoHeight = Math.max(160,Math.min(640,Number(localStorage.getItem('delta-media.video-height'))||320));
+function videoPresentation() {
+  const stage=document.querySelector<HTMLElement>('#stage');if(!stage)return;
+  stage.dataset.mode=videoMode;stage.style.setProperty('--video-height',videoHeight+'px');
+  const show=stage.querySelector<HTMLButtonElement>('[data-action="video-restore"]');if(show)show.hidden=videoMode!=='hidden';
+  stage.querySelectorAll<HTMLElement>('[data-video-controls]').forEach(el=>el.hidden=videoMode==='hidden');
+  localStorage.setItem('delta-media.video-mode',videoMode);localStorage.setItem('delta-media.video-height',String(videoHeight));
+}
+let searchInFlight = false, searchMessage = "";
 let searchTimer: ReturnType<typeof setTimeout>;
 let libraryDirty = true, syncBusy = false;
+let offline: OfflineCache | undefined;
 const deviceId = localStorage.getItem('delta-media.device') || crypto.randomUUID();
 localStorage.setItem('delta-media.device', deviceId);
 let acknowledgements: string[] = [];
-const prefDefaults = { resume:true, autoplayNext:true, seekStep:15, playbackRate:1, defaultVolume:1, compact:false, showArtwork:true, showSource:true, showLyrics:true, searchProviders:['youtube','soundcloud','spotify'] };
+const prefDefaults = { resume:true, autoplayNext:true, seekStep:15, playbackRate:1, defaultVolume:1, compact:false, showArtwork:true, showSource:true, showLyrics:true, searchProviders:['youtube','soundcloud','spotify'],offlineFormat:'auto' };
 let preferences = { ...prefDefaults, ...JSON.parse(localStorage.getItem('delta-media.preferences') || '{}') };
 function applyPreferences() {
   document.documentElement.classList.toggle('media-compact', preferences.compact);
@@ -90,15 +103,31 @@ async function renderProviders() {
   }catch{el.textContent=t('Подключите плагин Media на узле Delta.','Connect the Media plugin on your Delta node.');}
 }
 async function searchProviders(value: string) {
-  if(!host || value.trim().length<2)return;
-  searchBusy=true;render();
-  try { const result=await host.call('media.search',{query:value,providers:preferences.searchProviders}) as {items:Record<string,any>[]}; if(query!==value)return;remoteItems=result.items||[]; }
-  catch { if(query===value)remoteItems=[]; }
-  finally {if(query===value){searchBusy=false;render();}}
+  if(!host || value.trim().length<2 || searchInFlight)return;
+  searchInFlight=true;searchBusy=true;searchMessage='';render();
+  try {
+    const result=await host.call('media.search',{query:value,providers:preferences.searchProviders}) as {items:Record<string,any>[];providers?:{provider:string;error?:string}[]};
+    if(query!==value)return;
+    remoteItems=result.items||[];
+    if(result.providers?.some(p=>p.error))searchMessage=t('Часть источников не ответила. Можно повторить поиск.','Some sources did not respond. You can retry the search.');
+    else if(!remoteItems.length)searchMessage=t('В источниках ничего не найдено.','No results from connected sources.');
+  } catch {
+    if(query===value){remoteItems=[];searchMessage=t('Поиск временно недоступен. Повторите попытку.','Search is temporarily unavailable. Try again.');}
+  } finally {
+    searchInFlight=false;searchBusy=false;
+    if(query===value)render();else if(query.trim().length>=2)void searchProviders(query);else render();
+  }
 }
 async function synchronize() {
   if(!host||syncBusy||!shared.primary)return;syncBusy=true;
   try {
+    if (state.pendingRemovals?.length) {
+      for (const id of [...state.pendingRemovals]) {
+        await host.call('media.library', {remove:id});
+        state.pendingRemovals = state.pendingRemovals.filter(v => v !== id);
+      }
+      await persist();
+    }
     const snapshot=libraryDirty;libraryDirty=false;
     let batches:typeof state.media[]=[];
     if(snapshot){let batch:typeof state.media=[];let bytes=0;for(const item of state.media){const size=JSON.stringify(item).length;if(bytes+size>40000&&batch.length){batches.push(batch);batch=[];bytes=0;}batch.push(item);bytes+=size;}if(batch.length)batches.push(batch);}
@@ -230,12 +259,16 @@ function labels(): Record<string, string> {
   };
 }
 function shell() {
-  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><div class="video-tools"><button data-action="video-restore" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><span data-video-controls><button data-action="video-compact" aria-label="${t('Уменьшить видео','Compact video')}" title="${t('Уменьшить видео','Compact video')}">${icon('minus')}</button><button data-action="video-normal" aria-label="${t('Развернуть видео','Expand video')}" title="${t('Развернуть видео','Expand video')}">${icon('expand')}</button><button data-action="video-hide" aria-label="${t('Скрыть видео','Hide video')}" title="${t('Скрыть видео','Hide video')}">${icon('close')}</button></span></div><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="video-resize" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="${t('Высота видео','Video height')}"></div></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  videoPresentation();
+  const videoResize=document.querySelector<HTMLElement>('.video-resize')!;
+  videoResize.addEventListener('pointerdown',e=>{const start=e.clientY,height=videoHeight;videoMode='normal';videoResize.setPointerCapture(e.pointerId);const move=(event:PointerEvent)=>{videoHeight=Math.max(160,Math.min(640,height+event.clientY-start));videoPresentation();};const stop=()=>{videoResize.removeEventListener('pointermove',move);videoResize.removeEventListener('pointerup',stop);videoResize.removeEventListener('pointercancel',stop);};videoResize.addEventListener('pointermove',move);videoResize.addEventListener('pointerup',stop);videoResize.addEventListener('pointercancel',stop);});
+  videoResize.addEventListener('keydown',e=>{if(!['ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();videoMode='normal';videoHeight=Math.max(160,Math.min(640,videoHeight+(e.key==='ArrowUp'?-20:20)));videoPresentation();});
   document
     .querySelector<HTMLInputElement>("#search")!
     .addEventListener("input", (e) => {
       query = (e.target as HTMLInputElement).value;
-      view = query.trim() ? 'search' : 'home'; remoteItems = []; clearTimeout(searchTimer);
+      view = query.trim() ? 'search' : 'home'; remoteItems = []; searchMessage=''; clearTimeout(searchTimer);
       render(); searchTimer = setTimeout(() => void searchProviders(query), 450);
     });
   document
@@ -301,8 +334,62 @@ function filtered() {
     );
   return rows;
 }
+// Search results use provider identity, never their transient result index, for state.
+function savedResult(raw: Record<string, any>): Media | undefined {
+  const item = intentItems(raw)[0];
+  return item && state.media.find(m => m.source === item.source && m.sourceKey === item.sourceKey);
+}
+function importResult(raw: Record<string, any>): Media {
+  const items = intentItems(raw);
+  if (!items.length) throw Error(t('Ссылка не поддерживается.', 'Unsupported link.'));
+  const result = deduplicate(state.media, items);
+  state.media = result.media;
+  return state.media.find(m => m.id === result.ids[0])!;
+}
+const actionFeedback = new Map<string, number>();
+function trackActions(m: Media | undefined, attrs: string, prefix = '') {
+  const favorite = !!m?.favorite, queued = !!m && state.queue.includes(m.id);
+  const likeLabel = favorite ? t('Убрать из избранного', 'Remove from favorites') : t('В избранное', 'Add to favorites');
+  const queueLabel = queued ? t('Убрать из очереди', 'Remove from queue') : t('Добавить в очередь', 'Add to queue');
+  const fresh = (kind: string) => m && Date.now() - (actionFeedback.get(m.id + kind) || 0) < 600 ? ' action-feedback' : '';
+  return `<button class="track-action favorite-action${fresh('favorite')}" data-action="${prefix}favorite" ${attrs} aria-pressed="${favorite}" aria-label="${likeLabel}" title="${likeLabel}">${icon(favorite ? 'heart-filled' : 'favorites')}</button><button class="track-action queue-action${fresh('queue')}" data-action="${prefix}enqueue" ${attrs} aria-pressed="${queued}" aria-label="${queueLabel}" title="${queueLabel}"><span class="queue-state">${icon(queued ? 'check' : 'plus')}</span>${queued ? `<span class="queue-remove-icon" aria-hidden="true">${icon('close')}</span>` : ''}</button>`;
+}
+async function toggleFavorite(m: Media) {
+  m.favorite = !m.favorite;
+  actionFeedback.set(m.id + 'favorite', Date.now());
+  await persist(); render();
+  notify(m.favorite ? t('Добавлено в избранное', 'Added to favorites') : t('Убрано из избранного', 'Removed from favorites'));
+}
+async function toggleQueue(m: Media) {
+  const queued = state.queue.includes(m.id);
+  if (queued) removeQueued(state, m.id);
+  else state.queue.push(m.id);
+  actionFeedback.set(m.id + 'queue', Date.now());
+  await persist(); render(); updatePlayer();
+  notify(queued ? t('Убрано из очереди', 'Removed from queue') : t('Добавлено в очередь', 'Added to queue'));
+}
 function row(m: Media, index: number) {
-  return `<article class="media-row" data-id="${m.id}"><button class="art ${m.kind}" data-action="play" data-id="${m.id}" aria-label="${t("Воспроизвести", "Play")} ${esc(m.title)}">${m.artwork ? `<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">` : icons[m.kind as keyof typeof icons] || "▷"}</button><button class="media-title" data-action="details" data-id="${m.id}"><strong>${esc(m.title)}</strong><span>${esc(m.artist || m.album || "—")}</span>${m.position > 0 ? `<small>${t("Продолжить с", "Resume at")} ${time(m.position)}</small>` : ""}</button><span class="source-tag">${esc(m.source)}</span><span class="row-time">${m.kind === "radio" || m.kind === "live" ? "LIVE" : time(m.duration)}</span><button data-action="favorite" data-id="${m.id}" aria-pressed="${m.favorite}" aria-label="${t("Избранное", "Favorite")}">${icon("favorites")}</button><button data-action="enqueue" data-id="${m.id}" aria-label="${t("В очередь", "Add to queue")}">${icon("plus")}</button>${view === "queue" ? `<button data-action="queue-up" data-index="${index}" aria-label="Move up">${icon("arrow-up")}</button><button data-action="queue-remove" data-index="${index}" aria-label="Remove from queue">${icon("close")}</button>` : ""}</article>`;
+  return `<article class="media-row" data-id="${m.id}"><button class="art ${m.kind}" data-action="play" data-id="${m.id}" aria-label="${t("Воспроизвести", "Play")} ${esc(m.title)}">${m.artwork ? `<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">` : icons[m.kind as keyof typeof icons] || "▷"}</button><button class="media-title" data-action="details" data-id="${m.id}"><strong>${esc(m.title)}</strong><span>${esc(m.artist || m.album || "—")}</span>${m.position > 0 ? `<small>${t("Продолжить с", "Resume at")} ${time(m.position)}</small>` : ""}</button><span class="source-tag">${esc(m.source)}</span><span class="row-time">${m.kind === "radio" || m.kind === "live" ? "LIVE" : time(m.duration)}</span>${m.source==='youtube'?`<button class="track-action offline-action" data-action="offline" data-id="${m.id}" title="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-label="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-pressed="${!!offline?.available(m)}" ${offline?.available(m)?'disabled':''}>${icon(offline?.available(m)?'offline-ready':offline?.progress.has(m.id)?'close':'offline')}${offline?.progress.has(m.id)?`<small>${offline.progress.get(m.id)}%</small>`:''}</button>`:''}${trackActions(m, `data-id="${m.id}"`)}<button class="track-action" data-action="choose-playlists" data-id="${m.id}" title="${t("В плейлист", "Add to playlist")}" aria-label="${t("В плейлист", "Add to playlist")}">${icon("playlists")}</button>${view === "playlists" && playlistId && !state.playlists.find(p=>p.id===playlistId)?.rule ? `<button class="track-action" data-action="playlist-remove-item" data-id="${m.id}" title="${t("Убрать из плейлиста", "Remove from playlist")}" aria-label="${t("Убрать из плейлиста", "Remove from playlist")}">${icon("close")}</button>` : ""}<button class="track-action delete-action" data-action="delete" data-id="${m.id}" title="${t("Удалить из медиатеки", "Delete from library")}" aria-label="${t("Удалить из медиатеки", "Delete from library")}">${icon("trash")}</button>${view === "queue" ? `<button data-action="queue-up" data-index="${index}" aria-label="Move up">${icon("arrow-up")}</button><button data-action="queue-remove" data-index="${index}" aria-label="Remove from queue">${icon("close")}</button>` : ""}</article>`;
+}
+function choosePlaylists(id: string) {
+  const m = state.media.find(m => m.id === id); if (!m) return;
+  const lists = state.playlists.filter(p => !p.rule);
+  modal(`<h2>${t('В плейлист','Add to playlist')}</h2><p>${esc(m.title)}</p><form id="choose-playlists"><div class="picker-list">${lists.map(p=>`<label class="picker-row"><input type="checkbox" name="playlist" value="${p.id}" ${p.items.includes(id)?'checked':''}><span>${esc(p.name)}</span></label>`).join('')}</div><label>${t('Новый плейлист','New playlist')}<input name="new-name" maxlength="120" placeholder="${t('Название (необязательно)','Name (optional)')}"></label><button class="primary" type="submit">${icon('check')} ${t('Сохранить','Save')}</button></form>`);
+  document.querySelector<HTMLFormElement>('#choose-playlists')!.onsubmit=e=>{e.preventDefault();run(async()=>{
+    const data=new FormData(e.target as HTMLFormElement),chosen=new Set(data.getAll('playlist').map(String));
+    for(const p of lists){if(chosen.has(p.id)){if(!p.items.includes(id))p.items.push(id);}else p.items=p.items.filter(v=>v!==id);}
+    const name=String(data.get('new-name')||'').trim();if(name)state.playlists.push({id:uid(),name,items:[id]});
+    await persist();document.querySelector<HTMLDialogElement>('#dialog')!.close();render();notify(t('Плейлисты обновлены','Playlists updated'));
+  });};
+}
+function chooseLibrary() {
+  const p=state.playlists.find(p=>p.id===playlistId);if(!p||p.rule)return;
+  const items=state.media.filter(m=>!p.items.includes(m.id));
+  modal(`<h2>${t('Добавить из медиатеки','Add from library')}</h2><p>${esc(p.name)}</p><form id="choose-library"><label>${t('Поиск','Search')}<input id="library-picker-search" type="search" placeholder="${t('Название или исполнитель','Title or artist')}"></label><div class="picker-list">${items.map(m=>`<label class="picker-row" data-search="${esc((m.title+' '+(m.artist||'')).toLocaleLowerCase())}"><input type="checkbox" name="media" value="${m.id}"><span><strong>${esc(m.title)}</strong><small>${esc(m.artist||m.source)}</small></span></label>`).join('')}</div><p id="picker-empty" ${items.length?'hidden':''}>${t('Все записи уже добавлены или медиатека пуста.','All tracks have been added, or your library is empty.')}</p><button class="primary" type="submit" disabled>${icon('plus')} <span id="picker-submit-label">${t('Добавить выбранное','Add selected')}</span></button></form>`);
+  const form=document.querySelector<HTMLFormElement>('#choose-library')!;
+  form.querySelector<HTMLInputElement>('#library-picker-search')!.oninput=e=>{const q=(e.target as HTMLInputElement).value.trim().toLocaleLowerCase();let shown=0;form.querySelectorAll<HTMLElement>('.picker-row').forEach(row=>{row.hidden=!row.dataset.search!.includes(q);if(!row.hidden)shown++;});form.querySelector<HTMLElement>('#picker-empty')!.hidden=shown>0;};
+  form.onchange=()=>{const n=form.querySelectorAll('input[name="media"]:checked').length;form.querySelector<HTMLButtonElement>('[type="submit"]')!.disabled=!n;form.querySelector('#picker-submit-label')!.textContent=t(`Добавить выбранное (${n})`,`Add selected (${n})`);};
+  form.onsubmit=e=>{e.preventDefault();run(async()=>{const ids=new FormData(form).getAll('media').map(String);p.items=[...new Set([...p.items,...ids])];await persist();document.querySelector<HTMLDialogElement>('#dialog')!.close();render();notify(t(`Добавлено в плейлист: ${ids.length}`,`Added to playlist: ${ids.length}`));});};
 }
 const hiddenViews = hiddenSurfaces();
 const radio = new RadioView(
@@ -376,7 +463,7 @@ function render() {
     return;
   }
   if (view === 'search') {
-    target.innerHTML = `<div class="heading"><h1>${t('Поиск','Search')}</h1></div>${searchBusy?`<p role="status">${t('Ищем…','Searching…')}</p>`:''}${remoteItems.length?`<div class="media-list">${remoteItems.map((m,i)=>`<article class="media-row"><button class="art" data-action="provider-play" data-index="${i}" aria-label="${t('Воспроизвести','Play')}">${m.artwork?`<img src="${esc(m.artwork)}" alt="" loading="lazy">`:icon('play')}</button><div class="media-title"><strong>${esc(m.title)}</strong><span>${esc(m.artist||m.provider)}</span></div><button data-action="provider-enqueue" data-index="${i}" aria-label="${t('В очередь','Enqueue')}">${icon('plus')}</button></article>`).join('')}</div>`:''}<h2>${t('В медиатеке','In your library')}</h2>${filtered().map(row).join('')}`;
+    target.innerHTML = `<div class="heading"><h1>${t('Поиск','Search')}</h1></div>${searchBusy?`<p role="status">${t('Ищем…','Searching…')}</p>`:''}${searchMessage?`<div class="search-status" role="status"><p>${esc(searchMessage)}</p><button data-action="retry-search" aria-label="${t('Повторить поиск','Retry search')}" title="${t('Повторить поиск','Retry search')}">${icon('refresh')}</button></div>`:''}${remoteItems.length?`<div class="media-list">${remoteItems.map((m,i)=>`<article class="media-row remote-result"><button class="art" data-action="provider-play" data-index="${i}" aria-label="${t('Воспроизвести','Play')}">${m.artwork?`<img src="${esc(m.artwork)}" alt="" loading="lazy">`:icon('play')}</button><div class="media-title"><strong>${esc(m.title)}</strong><span>${esc(m.artist||m.provider)}</span></div>${trackActions(savedResult(m), `data-index="${i}"`, "provider-")}</article>`).join('')}</div>`:''}<h2>${t('В медиатеке','In your library')}</h2><div class="media-list">${filtered().map(row).join('')}</div>`;
     return;
   }
   if (view === "settings") {
@@ -390,7 +477,8 @@ function render() {
       );
       location.reload();
     };
-    target.querySelector<HTMLSelectElement>("#theme-select")!.onchange = (
+    if(hostThemed){target.querySelector('label[for="theme-select"]')?.remove();target.querySelector("#theme-select")?.remove();}
+    else target.querySelector<HTMLSelectElement>("#theme-select")!.onchange = (
       e,
     ) => {
       theme = (e.target as HTMLSelectElement).value;
@@ -422,9 +510,15 @@ function render() {
       render();
     });
     target.append(panel);
-    const playback=document.createElement('section');playback.className='settings-panel';
-    playback.innerHTML=`<h2>${t('Воспроизведение','Playback')}</h2>${(['resume','autoplayNext','compact','showArtwork','showSource','showLyrics'] as const).map((key,i)=>`<label><input type="checkbox" data-pref="${key}" ${preferences[key]?'checked':''}>${[t('Продолжать с сохранённой позиции','Resume saved position'),t('Следующий трек автоматически','Autoplay next'),t('Компактный список','Compact list'),t('Обложки','Artwork'),t('Метки источников','Source labels'),t('Текст песни','Lyrics')][i]}</label>`).join('')}<label>${t('Скорость','Speed')}<select data-pref="playbackRate">${[.5,.75,1,1.25,1.5,1.75,2].map(n=>`<option value="${n}" ${preferences.playbackRate===n?'selected':''}>${n}×</option>`).join('')}</select></label><label>${t('Шаг перемотки, с','Seek step, seconds')}<input type="number" data-pref="seekStep" min="1" max="120" value="${preferences.seekStep}"></label><label>${t("Начальная громкость", "Initial volume")}<input type="number" data-pref="defaultVolume" min="0" max="1" step="0.05" value="${preferences.defaultVolume}"></label>`;
-    playback.onchange=e=>{const input=e.target as HTMLInputElement;const key=input.dataset.pref!;if(!key)return;(preferences as Record<string,unknown>)[key]=input.type==='checkbox'?input.checked:Number(input.value);void savePreferences();};
+    const playback=document.createElement('section');playback.className='settings-panel playback-settings';
+    playback.innerHTML=`<h2>${t('Воспроизведение','Playback')}</h2><div class="settings-toggles">${(['resume','autoplayNext','compact','showArtwork','showSource','showLyrics'] as const).map((key,i)=>`<label><input type="checkbox" data-pref="${key}" ${preferences[key]?'checked':''}>${[t('Продолжать с сохранённой позиции','Resume saved position'),t('Следующий трек автоматически','Autoplay next'),t('Компактный список','Compact list'),t('Обложки','Artwork'),t('Метки источников','Source labels'),t('Текст песни','Lyrics')][i]}</label>`).join('')}</div><div class="settings-fields"><label for="playback-rate">${t('Скорость','Speed')}</label><select id="playback-rate" aria-label="${t('Скорость','Speed')}" data-pref="playbackRate">${[.5,.75,1,1.25,1.5,1.75,2].map(n=>`<option value="${n}" ${preferences.playbackRate===n?'selected':''}>${n}×</option>`).join('')}</select><label for="offline-format">${t('Офлайн-копии','Offline copies')}</label><select id="offline-format" data-pref="offlineFormat" aria-label="${t('Офлайн-копии','Offline copies')}">${(['auto','audio','video'] as const).map((v,i)=>`<option value="${v}" ${preferences.offlineFormat===v?'selected':''}>${[t('По типу записи','Match item type'),t('Только звук','Audio only'),t('Видео со звуком','Video with audio')][i]}</option>`).join('')}</select><label for="seek-step">${t('Шаг перемотки','Seek step')}</label><div class="settings-number"><input id="seek-step" type="number" data-pref="seekStep" min="1" max="120" step="1" required value="${preferences.seekStep}" aria-describedby="seek-unit preference-error"><span id="seek-unit">${t('с','sec')}</span></div><label for="initial-volume">${t('Начальная громкость','Initial volume')}</label><div class="settings-number"><input id="initial-volume" type="number" data-pref="defaultVolume" min="0" max="100" step="5" required value="${Math.round(preferences.defaultVolume*100)}" aria-describedby="volume-unit preference-error"><span id="volume-unit">%</span></div></div><p id="preference-error" class="field-error" role="status" hidden></p>`;
+    playback.oninput=e=>{const input=e.target as HTMLInputElement;input.removeAttribute('aria-invalid');};
+    playback.onchange=e=>{const input=e.target as HTMLInputElement;const key=input.dataset.pref!;if(!key)return;
+      const error=playback.querySelector<HTMLElement>('#preference-error')!;
+      if(key==='offlineFormat'){preferences.offlineFormat=input.value;void savePreferences();return;}
+      if(input.type!=='checkbox'&&(!input.checkValidity()||!Number.isFinite(Number(input.value)))){input.setAttribute('aria-invalid','true');error.textContent=key==='seekStep'?t('Введите целое число от 1 до 120 секунд.','Enter a whole number from 1 to 120 seconds.'):t('Введите громкость от 0 до 100% с шагом 5%.','Enter volume from 0 to 100%, in steps of 5%.');error.hidden=false;return;}
+      input.removeAttribute('aria-invalid');error.hidden=true;
+      (preferences as Record<string,unknown>)[key]=input.type==='checkbox'?input.checked:Number(input.value)/(key==='defaultVolume'?100:1);void savePreferences();};
     target.append(playback);
     return;
   }
@@ -455,7 +549,7 @@ function render() {
               view === "artists" ? "artist" : "album",
             ).find((g) => g.key === collectionId)?.name
           : label[view];
-  target.innerHTML = `<div class="heading"><div>${collectionId && ["artists", "albums"].includes(view) ? `<button data-action="collection-back" aria-label="${t("Назад", "Back")}">${icon("arrow-left")}</button>` : ""}<h1>${view === "home" ? t("Продолжить", "Continue listening") : esc(title)}</h1><p>${rows.length} ${t("записей", "items")}${view === "queue" ? " · " + t("Порядок сохраняется", "Order is saved") : ""}</p></div><div class="heading-actions">${view === "playlists" ? `<button data-action="new-playlist">${icon("plus")} ${t("Создать", "Create")}</button>${playlistId ? `<button data-action="export-playlist">${icon("download")} M3U</button><button data-action="export-playlist" data-format="pls">${icon("download")} PLS</button>` : ""}` : ""}${rows.length ? `<button class="primary" data-action="play-all">${icon("play")} ${t("Слушать", "Play")}</button>` : ""}</div></div>
+  target.innerHTML = `<div class="heading"><div>${collectionId && ["artists", "albums"].includes(view) ? `<button data-action="collection-back" aria-label="${t("Назад", "Back")}">${icon("arrow-left")}</button>` : ""}<h1>${view === "home" ? t("Продолжить", "Continue listening") : esc(title)}</h1><p>${rows.length} ${t("записей", "items")}${view === "queue" ? " · " + t("Порядок сохраняется", "Order is saved") : ""}</p></div><div class="heading-actions">${view === "playlists" ? `<button data-action="new-playlist">${icon("plus")} ${t("Создать", "Create")}</button>${playlistId ? `${!state.playlists.find(p=>p.id===playlistId)?.rule ? `<button data-action="choose-library" class="primary">${icon("plus")} ${t("Добавить из медиатеки", "Add from library")}</button>` : ""}<button data-action="export-playlist">${icon("download")} M3U</button><button data-action="export-playlist" data-format="pls">${icon("download")} PLS</button>` : ""}` : ""}${rows.length ? `<button class="primary" data-action="play-all">${icon("play")} ${t("Слушать", "Play")}</button>` : ""}</div></div>
  ${view === "playlists" ? `<div class="chips">${state.playlists.map((p) => `<button class="${playlistId === p.id ? "selected" : ""}" data-action="playlist" data-id="${p.id}">${esc(p.name)} · ${playlistMedia(p, state.media).length}</button>`).join("")}</div>` : ""}
  <div class="filters"><div class="chips">${adapters
    .filter((a) => a.status === "ready" && (['local', 'direct', 'rss'].includes(a.id) || state.media.some(m => m.source === a.id)))
@@ -756,8 +850,14 @@ const actionHandlers: Record<
     await player.load(i);
     render();
   },
+  'video-compact': () => {videoMode='compact';videoPresentation();},
+  'video-normal': () => {videoMode='normal';videoPresentation();},
+  'video-hide': () => {videoMode='hidden';videoPresentation();},
+  'video-restore': () => {videoMode='normal';videoPresentation();},
+  'retry-search': () => searchProviders(query),
   'provider-play': async el => receiveMedia(true, remoteItems[Number(el.dataset.index)]),
-  'provider-enqueue': async el => receiveMedia(false, remoteItems[Number(el.dataset.index)]),
+  'provider-enqueue': async el => toggleQueue(importResult(remoteItems[Number(el.dataset.index)])),
+  'provider-favorite': async el => toggleFavorite(importResult(remoteItems[Number(el.dataset.index)])),
   "play-all": async () => {
     state.queue = filtered().map((m) => m.id);
     if (state.queue.length) await player.load(0);
@@ -765,7 +865,7 @@ const actionHandlers: Record<
   },
   toggle: async () => {
     if (!player.current) {
-      if (state.queue.length) await player.load(state.queueIndex);
+      if (state.queue.length) await player.load(Math.max(0,state.queueIndex));
       else
         throw Error(
           t("Сначала добавьте медиа.", "Add media to start listening."),
@@ -785,17 +885,8 @@ const actionHandlers: Record<
     await persist();
     updatePlayer();
   },
-  favorite: async (el) => {
-    const m = state.media.find((m) => m.id === el.dataset.id)!;
-    m.favorite = !m.favorite;
-    await persist();
-    render();
-  },
-  enqueue: async (el) => {
-    state.queue.push(el.dataset.id!);
-    await persist();
-    notify(t("Добавлено в очередь", "Added to queue"));
-  },
+  favorite: async el => toggleFavorite(state.media.find(m => m.id === el.dataset.id)!),
+  enqueue: async el => toggleQueue(state.media.find(m => m.id === el.dataset.id)!),
   queue: () => {
     view = "queue";
     render();
@@ -815,14 +906,15 @@ const actionHandlers: Record<
   },
   "queue-remove": async (el) => {
     const i = Number(el.dataset.index);
-    if (i === state.queueIndex && player.current)
-      throw Error("Stop or change the active item before removing it.");
-    state.queue.splice(i, 1);
-    if (i < state.queueIndex) state.queueIndex--;
+    removeQueued(state, state.queue[i], i);
     await persist();
     render();
   },
+  offline: async el => offline?.toggle(state.media.find(m=>m.id===el.dataset.id)!),
   details: (el) => details(el.dataset.id!),
+  'choose-playlists': el => choosePlaylists(el.dataset.id!),
+  'choose-library': () => chooseLibrary(),
+  'playlist-remove-item': async el => {const p=state.playlists.find(p=>p.id===playlistId);if(!p||p.rule)return;p.items=p.items.filter(id=>id!==el.dataset.id);await persist();render();notify(t('Убрано из плейлиста','Removed from playlist'));},
   "new-playlist": () => {
     modal(
       `<h2>${t("Плейлист", "Playlist")}</h2><form id="playlist-form">${input("name", t("Название", "Name"))}<label class="check"><input type="checkbox" name="smart">${t("Авто", "Smart")}</label><fieldset id="smart-fields" hidden disabled>${input("query", t("Поиск", "Search"))}${input("tag", t("Тег", "Tag"))}<label class="check"><input type="checkbox" name="favorite">${t("Избранное", "Favorites")}</label></fieldset><button type="submit" class="primary">${icon("plus")} ${t("Создать", "Create")}</button></form>`,
@@ -957,12 +1049,8 @@ const actionHandlers: Record<
   "confirm-delete": async (el) => {
     const id = el.dataset.id!,
       m = state.media.find((m) => m.id === id)!;
-    if (player.current?.id === id) {
-      player.element.pause();
-      player.current = undefined;
-      player.element.removeAttribute("src");
-      player.element.load();
-    }
+    if (player.current?.id === id) await player.stop();
+    state.pendingRemovals = [...new Set([...(state.pendingRemovals || []), id])];
     state.media = state.media.filter((m) => m.id !== id);
     const removedBefore = state.queue
       .slice(0, state.queueIndex)
@@ -978,6 +1066,7 @@ const actionHandlers: Record<
     document.querySelector<HTMLDialogElement>("#dialog")!.close();
     render();
     updatePlayer();
+    notify(t("Удалено из медиатеки", "Deleted from library"));
   },
 };
 app.addEventListener("click", (e) => {
@@ -1052,6 +1141,8 @@ async function boot() {
   }
   storage = await new Storage().open();
   state = await storage.load();
+  offline=new OfflineCache(host,storage,()=>state,deviceId,persist,render,notify,t,()=>preferences.offlineFormat);
+  setInterval(()=>{if(shared.primary)void offline?.poll();},1800);
   if (!state.media.length) state.volume = preferences.defaultVolume;
   shell();
   styledControls();
@@ -1090,7 +1181,7 @@ async function boot() {
   if (shared.primary && state.queue.length) {
     try {
       await player.load(
-        Math.min(state.queueIndex, state.queue.length - 1),
+        Math.max(0, Math.min(state.queueIndex, state.queue.length - 1)),
         false,
       );
     } catch (e) {

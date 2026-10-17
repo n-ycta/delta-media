@@ -130,6 +130,25 @@ try {
     return v.videoWidth > 0 && v.currentTime > 0.2;
   });
   results.push("Local WebM: actual video decoder, nonzero video dimensions");
+  await page.locator('#toggle').click();
+  const clipSource=await page.locator('video').getAttribute('src');
+  const clipTime=await page.locator('video').evaluate(v=>v.currentTime);
+  await page.locator('[data-action=video-compact]').click();
+  assert.equal(await page.locator('#stage').getAttribute('data-mode'),'compact');
+  await page.screenshot({path:path.join(output,'media-video-compact.png')});
+  await page.locator('[data-action=video-normal]').click();
+  await page.locator('.video-resize').focus();await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#stage').evaluate(e=>e.style.getPropertyValue('--video-height')),'340px');
+  await page.locator('[data-action=video-hide]').click();
+  assert.equal(await page.locator('video').getAttribute('src'),clipSource);
+  assert.ok(Math.abs(await page.locator('video').evaluate(v=>v.currentTime)-clipTime)<.2);
+  await page.screenshot({path:path.join(output,'media-video-hidden.png')});
+  await page.locator('#toggle').click();await page.waitForTimeout(250);
+  assert.ok(await page.locator('video').evaluate(v=>!v.paused&&v.currentTime)>0);
+  await page.locator('[data-action=video-restore]').click();
+  assert.equal(await page.locator('video').getAttribute('src'),clipSource);
+  results.push('Video compact/resize/hide/restore preserves the decoder and playback');
+
   await page.locator("[data-action=view][data-view=library]").click();
   await page.locator('[data-action=play][aria-label="Play tone"]').click();
   await page.waitForFunction(

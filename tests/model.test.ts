@@ -11,6 +11,7 @@ import {
   parseLrc,
   directUrl,
   freshState,
+  removeQueued,
 } from "../src/model";
 import { parsePlaylist, exportPlaylist } from "../src/playlists";
 import { adapters } from "../src/adapters";
@@ -161,4 +162,21 @@ test("smart playlists recompute membership and manual playlists retain repeats",
     parseSmartRule({ query: "x", favorite: true, eval: "no", minPlays: -1 }),
     { query: "x", favorite: true },
   );
+});
+
+test("queue membership removal removes duplicates and preserves the selected successor", () => {
+  const s = {...freshState(),queue:['a','b','a','c'],queueIndex:3};
+  removeQueued(s,'a');
+  assert.deepEqual(s.queue,['b','c']); assert.equal(s.queueIndex,1);
+  removeQueued(s,'c'); assert.deepEqual(s.queue,['b']); assert.equal(s.queueIndex,0);
+  removeQueued(s,'b'); assert.deepEqual(s.queue,[]); assert.equal(s.queueIndex,0);
+  const active={...freshState(),queue:['a','b','c'],queueIndex:1};
+  removeQueued(active,'b'); assert.equal(active.queueIndex,0);
+  assert.equal(nextIndex(active),1);
+  const first={...freshState(),queue:['a','b'],queueIndex:0};
+  removeQueued(first,'a'); assert.equal(first.queueIndex,-1); assert.equal(nextIndex(first),0);
+});
+test("removing one queued repeat does not remove other occurrences", () => {
+  const s={...freshState(),queue:['a','a','b'],queueIndex:2};
+  removeQueued(s,'a',1); assert.deepEqual(s.queue,['a','b']); assert.equal(s.queueIndex,1);
 });
