@@ -59,6 +59,7 @@ export class EmbedController {
   provider?: EmbedProvider;
   playing = false;
   position = 0;
+  hasPosition = false;
   duration = 0;
   constructor(
     readonly frame: HTMLIFrameElement,
@@ -83,14 +84,14 @@ export class EmbedController {
       if(this.provider==='spotify'&&d.type==='error'){this.set(false);onError('Spotify could not play this item. Check access in the embedded player.');}
 
       if(this.provider==='youtube' && d.event==='infoDelivery' && d.info){
-        if(Number.isFinite(d.info.currentTime))this.position=d.info.currentTime;
+        if(Number.isFinite(d.info.currentTime)){this.position=d.info.currentTime;this.hasPosition=true;}
         if(Number.isFinite(d.info.duration))this.duration=d.info.duration;
         this.onChange();
       }
       if(this.provider==='soundcloud' && ['playProgress','getPosition','getDuration'].includes(d.method)){
         const v=d.value;
         if(d.method==='getDuration' && Number.isFinite(v))this.duration=v/1000;
-        else if(Number.isFinite(v?.currentPosition ?? v))this.position=(v?.currentPosition ?? v)/1000;
+        else if(Number.isFinite(v?.currentPosition ?? v)){this.position=(v?.currentPosition ?? v)/1000;this.hasPosition=true;}
         this.onChange();
       }
       if (this.provider === "youtube" && d.event === "infoDelivery" && typeof d.info?.playerState === "number") {
@@ -111,7 +112,7 @@ export class EmbedController {
         }
       }
       if (this.provider === "spotify" && d.type === "playback_update" && d.payload) {
-        if(Number.isFinite(d.payload.position))this.position=d.payload.position/1000;
+        if(Number.isFinite(d.payload.position)){this.position=d.payload.position/1000;this.hasPosition=true;}
         if(Number.isFinite(d.payload.duration))this.duration=d.payload.duration/1000;
         this.set(!d.payload.isPaused);this.onChange();
         if (d.payload.duration && d.payload.position >= d.payload.duration - 500 && d.payload.isPaused) onEnded();
@@ -139,7 +140,7 @@ export class EmbedController {
   open(provider: EmbedProvider, url: string) {
     this.provider = provider;
     this.playing = false;
-    this.position=0;this.duration=0;
+    this.position=0;this.duration=0;this.hasPosition=false;
     this.frame.src = url;
     this.frame.hidden = false;
     this.onChange();

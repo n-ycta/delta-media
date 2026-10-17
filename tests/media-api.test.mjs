@@ -36,3 +36,29 @@ test('search returns partial results within deadline and recovers after failures
  const next=await h['media.search']({query:'Next'});assert.equal(next.items[0].title,'Next');assert.equal(next.providers.find(p=>p.provider==='spotify').error,'timeout');
  }finally{await rm(dir,{recursive:true,force:true})}
 });
+
+test('real service merges field patches without clobbering favorite or queue across devices',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'media-fields-'));
+ try {const h=await createMedia({call:async()=>[]},{dataDir:dir});
+ const item={id:'yt',source:'youtube',sourceKey:'abcdefghijk',title:'Track',favorite:false,position:0};
+ await h['media.sync']({deviceId:'a',library:[item]});
+ await h['media.sync']({deviceId:'a',library:[{...item,favorite:true}],fields:{yt:['favorite']}});
+ const result=await h['media.sync']({deviceId:'b',library:[{...item,position:20}],fields:{yt:['position']},queue:['yt']});
+ assert.equal(result.library[0].favorite,true);assert.equal(result.library[0].position,20);assert.deepEqual(result.queue,['yt']);
+ const again=await createMedia({call:async()=>[]},{dataDir:dir});const saved=await again['media.sync']({deviceId:'a'});assert.equal(saved.library[0].favorite,true);assert.equal(saved.syncProtocol,2);
+ }finally{await rm(dir,{recursive:true,force:true})}
+});
+test('radio and YouTube deletion also blocks stale alternate IDs with identical source identity',async()=>{
+ for(const source of ['direct','youtube']){
+ const dir=await mkdtemp(join(tmpdir(),'media-identity-delete-'));
+ try {let h=await createMedia({call:async()=>[]},{dataDir:dir});
+ const item={id:'original',source,sourceKey:source==='youtube'?'abcdefghijk':'https://radio.example/live',title:'Track'};
+ await h['media.sync']({deviceId:'a',library:[item]});await h['media.library']({remove:item.id});
+ h=await createMedia({call:async()=>[]},{dataDir:dir});
+ const stale=await h['media.sync']({deviceId:'b',library:[{...item,id:'other-device-id'}],queue:['other-device-id'],playlists:[{id:'p',name:'P',items:['other-device-id']}]});assert.deepEqual(stale.library,[],source+' must stay deleted');assert.deepEqual(stale.queue,[]);assert.deepEqual(stale.playlists[0].items,[]);
+ }finally{await rm(dir,{recursive:true,force:true})}
+ }
+});
+test('JSON field deletion does not break synchronization or resurrect removed metadata',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'media-unset-'));try{const h=await createMedia({call:async()=>[]},{dataDir:dir});await h['media.library']({item:{id:'a',title:'Song',artist:'Artist'}});const r=await h['media.sync']({deviceId:'a',library:[{id:'a',title:'Song',artist:null}],fields:{a:['artist']}});assert.equal(r.library[0].artist,undefined);}finally{await rm(dir,{recursive:true,force:true})}
+});

@@ -32,6 +32,7 @@ export function intentItems(payload: unknown): Media[] {
         m.url = url;
       }
       m.artist = text(o.artist) || undefined;
+      if(text(o.channelUrl,2048))try{const u=new URL(String(o.channelUrl));if(u.protocol==='https:'&&u.hostname==='www.youtube.com')m.channelUrl=u.href;}catch{}
       m.album = text(o.album) || undefined;
       if (typeof o.duration === "number" && o.duration > 0 && o.duration < 1e6) m.duration = o.duration;
       if (text(o.artwork, 2048)) {

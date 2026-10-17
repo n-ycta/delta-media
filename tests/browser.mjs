@@ -77,7 +77,7 @@ try {
   await page.locator("[data-action=favorite]").click();
   await page.locator("[data-action=view][data-view=favorites]").click();
   assert.equal(await page.locator(".media-row").count(), 1);
-  await page.locator(".media-title").click();
+  await page.locator('[data-action=details]').click();
   await page.locator("input[name=artist]").fill("Aster");
   await page.locator("input[name=album]").fill("Night field");
   await page

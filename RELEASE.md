@@ -1,3 +1,14 @@
+## 0.3.6
+
+- Preserve favorite, queue and metadata field changes across synchronization and shared playback panels. Source-identity tombstones prevent stale clients from restoring deleted radio or YouTube entries; deliberate re-import remains available.
+- Add context-menu and visible multi-selection, batch deletion and an optional one-hour confirmation pause. Deletion removes the library record and private cached copy, never the original source file.
+- Make Play now explicit and independent of queue membership; retain current playback identity and available artwork. Avoid resetting the timeline from incomplete embed events.
+- Make video show/hide/restore controls discoverable while retaining compact and resizable presentation.
+- Add YouTube channel browsing, pagination and playlist import through the headless provider's browse capability. Requires current host brokers and YouTube provider >=0.2.4.
+- Regression coverage uses a real persisted Media service and native WAV/WebM decoding. External provider search/metadata availability is separate from playback; autoplay, account, embed and downloader restrictions still apply. Multi-page imports are bounded and not an unlimited library-sync guarantee.
+
+Install both the process package and portable UI; update the host broker before using browse. No user library reset is required.
+
 ## 0.3.5
 
 - Media remains the only media UI plugin. YouTube, SoundCloud and Spotify connect as headless provider plugins. Unified search and provider selection live inside Media.

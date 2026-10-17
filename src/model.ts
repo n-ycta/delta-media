@@ -35,6 +35,7 @@ export interface Media {
   offlineDeviceId?: string;
   mime?: string;
   artist?: string;
+  channelUrl?: string;
   album?: string;
   genre?: string;
   artwork?: string;
@@ -75,10 +76,14 @@ export interface HistoryEntry {
 export interface State {
   version: 1;
   pendingRemovals?: string[];
+  pendingRestores?: string[];
+  deletedIds?: string[];
+  syncBase?: {media:Media[];queue:string[];playlists:Playlist[]};
   media: Media[];
   playlists: Playlist[];
   queue: string[];
   queueIndex: number;
+  currentId?: string;
   repeat: "off" | "one" | "all";
   shuffle: boolean;
   volume: number;
@@ -224,6 +229,7 @@ export interface MediaCollection {
   key: string;
   name: string;
   artist?: string;
+  channelUrl?: string;
   artwork?: string;
   items: Media[];
 }

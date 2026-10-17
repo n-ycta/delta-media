@@ -28,7 +28,7 @@ export class Player extends EventTarget {
       this.embed = new EmbedController(
         embedFrame,
         () => {
-          if(this.usingEmbed){this.current!.position=this.embed!.position;if(this.embed!.duration>0)this.current!.duration=this.embed!.duration;}
+          if(this.usingEmbed){if(this.embed!.hasPosition)this.current!.position=this.embed!.position;if(this.embed!.duration>0)this.current!.duration=this.embed!.duration;}
           this.change();
         },
         () =>
@@ -156,8 +156,12 @@ export class Player extends EventTarget {
   }
   async load(index: number, autoplay = true): Promise<void> {
     if (this.delegate) { if (autoplay) await this.delegate('load',[index,autoplay]); return; }
-    const id = this.state.queue[index],
-      m = this.state.media.find((m) => m.id === id);
+    return this.playId(this.state.queue[index], autoplay);
+  }
+  /** Immediate playback is independent of the user-managed queue. */
+  async playId(id: string, autoplay = true): Promise<void> {
+    if (this.delegate) { await this.delegate('playId',[id,autoplay]); return; }
+    const m = this.state.media.find((m) => m.id === id);
     if (!m)
       throw Error("Queue item is unavailable. Remove it or reimport the file.");
     const generation = ++this.generation;
@@ -165,7 +169,8 @@ export class Player extends EventTarget {
     this.metadataReady = false;
     this.restorePosition = this.resume ? m.position : 0;
     this.current = m;
-    this.state.queueIndex = index;
+    this.state.currentId = m.id;
+    this.state.queueIndex = this.state.queue.indexOf(id);
     this.session = false;
     this.historyId = "";
     if (this.objectUrl) {
@@ -182,7 +187,7 @@ export class Player extends EventTarget {
       const e = embedUrl(m.embed);
       this.element.hidden = true;
       if ("mediaSession" in navigator)
-        navigator.mediaSession.metadata = new MediaMetadata({ title: m.title, artist: m.artist || "", album: m.album || "" });
+        navigator.mediaSession.metadata = new MediaMetadata({ title: m.title, artist: m.artist || "", album: m.album || "", artwork: m.artwork ? [{src:m.artwork}] : [] });
       m.lastPlayed = Date.now();
       m.plays++;
       if (autoplay) this.embed!.open(e.provider, e.url);
@@ -205,6 +210,7 @@ export class Player extends EventTarget {
         title: m.title,
         artist: m.artist || "",
         album: m.album || "",
+        artwork: m.artwork ? [{src:m.artwork}] : [],
       });
     await this.save();
     if (generation !== this.generation) return;
@@ -212,8 +218,8 @@ export class Player extends EventTarget {
     if (autoplay) await this.play();
   }
   private get usingEmbed(): boolean { return !!this.current?.embed && !!this.embed && !this.element.getAttribute('src'); }
-  get position():number { return this.delegate ? this.current?.position || 0 : this.usingEmbed ? this.embed?.position || 0 : this.element.currentTime || 0; }
-  get duration():number { return this.delegate ? this.current?.duration || 0 : this.usingEmbed ? this.embed?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
+  get position():number { return this.delegate ? this.current?.position || 0 : this.usingEmbed ? (this.embed?.hasPosition ? this.embed.position : this.current?.position || 0) : this.element.currentTime || 0; }
+  get duration():number { return this.delegate ? this.current?.duration || 0 : this.usingEmbed ? this.embed?.duration || this.current?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
   volume(value:number){if(this.delegate){void this.delegate('volume',[value]);return;}this.element.volume=value;this.embed?.volume(value);}
   /** True while audio/video or a provider player is playing. */
   get playing(): boolean {
@@ -232,6 +238,7 @@ export class Player extends EventTarget {
     this.element.pause();
     this.embed?.close();
     this.current = undefined;
+    this.state.currentId = undefined;
     this.element.removeAttribute('src'); this.element.load(); this.element.hidden = true;
     if (this.objectUrl) { URL.revokeObjectURL(this.objectUrl); this.objectUrl = ''; }
     if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
@@ -277,6 +284,11 @@ export class Player extends EventTarget {
   async next(ended = false): Promise<void> {
     if(this.delegate)return this.delegate('next',[ended]);
     if (ended && !this.autoplayNext) { this.pause(); this.change(); return; }
+    if (ended && this.state.repeat === "one" && this.current) {
+      this.current.position = 0;
+      await this.playId(this.current.id);
+      return;
+    }
     const next = nextIndex(this.state, ended);
     if (next === null) {
       this.pause();

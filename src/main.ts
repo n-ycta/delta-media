@@ -1,3 +1,4 @@
+import { image, changes, reconcile } from "./reconcile";
 import {OfflineCache} from "./offline";
 import {analysePlayback} from "./visualizer";
 import { sharedPlayback } from "./shared";
@@ -75,8 +76,11 @@ function videoPresentation() {
   localStorage.setItem('delta-media.video-mode',videoMode);localStorage.setItem('delta-media.video-height',String(videoHeight));
 }
 let searchInFlight = false, searchMessage = "";
+let browseInfo:{title:string;description?:string;artwork?:string;url:string;next?:string}|undefined;
 let searchTimer: ReturnType<typeof setTimeout>;
 let libraryDirty = true, syncBusy = false;
+let selectionMode=false; const selectedMedia=new Set<string>();
+let deleteIds:string[]=[];
 let offline: OfflineCache | undefined;
 const deviceId = localStorage.getItem('delta-media.device') || crypto.randomUUID();
 localStorage.setItem('delta-media.device', deviceId);
@@ -104,7 +108,7 @@ async function renderProviders() {
 }
 async function searchProviders(value: string) {
   if(!host || value.trim().length<2 || searchInFlight)return;
-  searchInFlight=true;searchBusy=true;searchMessage='';render();
+  searchInFlight=true;searchBusy=true;searchMessage='';browseInfo=undefined;render();
   try {
     const result=await host.call('media.search',{query:value,providers:preferences.searchProviders}) as {items:Record<string,any>[];providers?:{provider:string;error?:string}[]};
     if(query!==value)return;
@@ -118,6 +122,24 @@ async function searchProviders(value: string) {
     if(query===value)render();else if(query.trim().length>=2)void searchProviders(query);else render();
   }
 }
+async function browseCollection(url:string,cursor?:string) {
+ if(!host)return;searchBusy=true;searchMessage='';view='search';render();
+ try{const result=await host.call('media.browse',{url,...(cursor?{cursor}:{})}) as any;
+   remoteItems=cursor?[...remoteItems,...result.items]:result.items;browseInfo={...result,url};
+ }catch{searchMessage=t('Канал или плейлист недоступен. Проверьте ключ YouTube API в настройках источника или повторите позже.','Channel or playlist unavailable. Check the YouTube API key in source settings or try later.');}
+ finally{searchBusy=false;render();}
+}
+async function importCollection(url:string) {
+ if(!host)throw Error(t('Подключите Media на узле.','Connect Media on a node.'));
+ const incoming:Media[]=[];let cursor:string|undefined,title='YouTube';const seen=new Set<string>();
+ do{const result=await host.call('media.browse',{url,...(cursor?{cursor}:{})}) as any;
+   title=result.title||title;for(const item of result.items||[])incoming.push(...intentItems(item));
+   if(incoming.length>5000)throw Error(t('Плейлист содержит больше 5000 записей. Импорт отменён без изменений.','Playlist exceeds 5000 items. Import cancelled without changes.'));
+   cursor=result.next;if(cursor&&seen.has(cursor))throw Error(t('Источник повторяет страницу. Импорт отменён.','Provider repeated a page. Import cancelled.'));if(cursor)seen.add(cursor);
+   notify(t(`Загружено записей: ${incoming.length}`,`Loaded items: ${incoming.length}`));
+ }while(cursor);
+ await addMedia(incoming,title);
+}
 async function synchronize() {
   if(!host||syncBusy||!shared.primary)return;syncBusy=true;
   try {
@@ -128,12 +150,34 @@ async function synchronize() {
       }
       await persist();
     }
+    if(state.pendingRestores?.length){
+      for(const id of [...state.pendingRestores]){
+        const item=state.media.find(m=>m.id===id);
+        if(item)await host.call('media.library',{item});
+        state.pendingRestores=state.pendingRestores.filter(v=>v!==id);
+        state.deletedIds=(state.deletedIds||[]).filter(v=>v!==id);
+      }
+      await persist();
+    }
+    const presentation=()=>JSON.stringify({media:state.media.map(({position,plays,listenedSeconds,lastPlayed,...m})=>m),queue:state.queue,playlists:state.playlists});
+    const oldPresentation=presentation();
+    const before=image(state);
+    const delta=changes(state.syncBase || {media:[],queue:[],playlists:[]},before);
     const snapshot=libraryDirty;libraryDirty=false;
     let batches:typeof state.media[]=[];
-    if(snapshot){let batch:typeof state.media=[];let bytes=0;for(const item of state.media){const size=JSON.stringify(item).length;if(bytes+size>40000&&batch.length){batches.push(batch);batch=[];bytes=0;}batch.push(item);bytes+=size;}if(batch.length)batches.push(batch);}
-    for(const batch of batches.slice(0,-1))await host.call('media.sync',{deviceId,library:batch});
-    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.position},...(snapshot?{library:batches.at(-1)||[],playlists:state.playlists,queue:state.queue}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[]};
-    if(!libraryDirty){state.media=result.library;state.playlists=result.playlists;state.queue=result.queue;preferences={...preferences,...result.settings};applyPreferences();shared.saved(state);}
+    if(snapshot){let batch:typeof state.media=[];let bytes=0;for(const item of delta.library){const size=new TextEncoder().encode(JSON.stringify(item)+JSON.stringify(delta.fields[item.id]||[])).length;if(bytes+size>40000&&batch.length){batches.push(batch);batch=[];bytes=0;}batch.push(item);bytes+=size;}if(batch.length)batches.push(batch);}
+    const fieldsFor=(items:typeof state.media)=>Object.fromEntries(items.map(m=>[m.id,delta.fields[m.id]]));
+    for(const batch of batches.slice(0,-1))await host.call('media.sync',{deviceId,library:batch,fields:fieldsFor(batch)});
+    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.position},...(snapshot?{library:batches.at(-1)||[],fields:fieldsFor(batches.at(-1)||[]),...(delta.playlists?{playlists:delta.playlists}:{}),...(delta.queue?{queue:delta.queue}:{})}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[];removed?:string[];syncProtocol?:number};
+    const tombstones=[...new Set([...(state.deletedIds||[]),...(result.removed||[])])];
+    const currentId=player.current?.id;
+    reconcile(state,{media:result.library,queue:result.queue,playlists:result.playlists},before,[...tombstones,...(state.pendingRemovals||[])]);
+    state.deletedIds=tombstones;
+    state.syncBase=image({media:result.library,queue:result.queue,playlists:result.playlists});
+    if(currentId)player.current=state.media.find(m=>m.id===currentId);
+    preferences={...preferences,...result.settings};applyPreferences();shared.saved(state);
+    const saved=structuredClone(state);saving=saving.catch(()=>{}).then(()=>storage.save(saved));await saving;
+    if(oldPresentation!==presentation()&&!document.querySelector<HTMLDialogElement>('#dialog')?.open)render();updatePlayer();
     acknowledgements=[];
     for(const c of result.commands){try{if(c.command==='play'){if(c.args.item)await receiveMedia(true,c.args.item);else if(c.args.id){const index=state.queue.indexOf(c.args.id);if(index>=0)await player.load(index);}else await player.play();}else if(c.command==='pause')player.pause();else if(c.command==='next')await player.next();else if(c.command==='previous')await player.previous();else if(c.command==='seek')player.seek(c.args.position);else if(c.command==='queue'){state.queue=c.args.items;await persist();}acknowledgements.push(c.id);}catch(e){acknowledgements.push(c.id);notify(t('Не удалось выполнить команду воспроизведения.','Playback command failed.'),true);}}
   }catch{libraryDirty=true;}finally{syncBusy=false;}
@@ -220,9 +264,9 @@ async function persist() {
   libraryDirty = true;
   const snapshot = structuredClone(state);
   saving = saving.catch(() => {}).then(() => storage.save(snapshot));
+  shared.saved(state);
   try {
     await saving;
-    shared.saved(state);
     saveError = false;
   } catch (e) {
     saveError = true;
@@ -259,7 +303,7 @@ function labels(): Record<string, string> {
   };
 }
 function shell() {
-  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><div class="video-tools"><button data-action="video-restore" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><span data-video-controls><button data-action="video-compact" aria-label="${t('Уменьшить видео','Compact video')}" title="${t('Уменьшить видео','Compact video')}">${icon('minus')}</button><button data-action="video-normal" aria-label="${t('Развернуть видео','Expand video')}" title="${t('Развернуть видео','Expand video')}">${icon('expand')}</button><button data-action="video-hide" aria-label="${t('Скрыть видео','Hide video')}" title="${t('Скрыть видео','Hide video')}">${icon('close')}</button></span></div><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="video-resize" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="${t('Высота видео','Video height')}"></div></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><div class="video-tools"><button data-action="video-restore" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><span data-video-controls><button data-action="video-compact" aria-label="${t('Уменьшить видео','Compact video')}" title="${t('Уменьшить видео','Compact video')}">${icon('minus')}</button><button data-action="video-normal" aria-label="${t('Развернуть видео','Expand video')}" title="${t('Развернуть видео','Expand video')}">${icon('expand')}</button><button data-action="video-hide" aria-label="${t('Скрыть видео','Hide video')}" title="${t('Скрыть видео','Hide video')}">${icon('close')}</button></span></div><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="video-resize" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="${t('Высота видео','Video height')}"></div></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="video-show" id="video-show" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
   videoPresentation();
   const videoResize=document.querySelector<HTMLElement>('.video-resize')!;
   videoResize.addEventListener('pointerdown',e=>{const start=e.clientY,height=videoHeight;videoMode='normal';videoResize.setPointerCapture(e.pointerId);const move=(event:PointerEvent)=>{videoHeight=Math.max(160,Math.min(640,height+event.clientY-start));videoPresentation();};const stop=()=>{videoResize.removeEventListener('pointermove',move);videoResize.removeEventListener('pointerup',stop);videoResize.removeEventListener('pointercancel',stop);};videoResize.addEventListener('pointermove',move);videoResize.addEventListener('pointerup',stop);videoResize.addEventListener('pointercancel',stop);});
@@ -339,11 +383,18 @@ function savedResult(raw: Record<string, any>): Media | undefined {
   const item = intentItems(raw)[0];
   return item && state.media.find(m => m.source === item.source && m.sourceKey === item.sourceKey);
 }
+function restoreImported(ids:string[]) {
+  ids=ids.filter(id=>!state.syncBase?.media.some(m=>m.id===id)||(state.deletedIds||[]).includes(id));
+  state.pendingRestores=[...new Set([...(state.pendingRestores||[]),...ids])];
+  state.pendingRemovals=(state.pendingRemovals||[]).filter(id=>!ids.includes(id));
+  state.deletedIds=(state.deletedIds||[]).filter(id=>!ids.includes(id));
+}
 function importResult(raw: Record<string, any>): Media {
   const items = intentItems(raw);
   if (!items.length) throw Error(t('Ссылка не поддерживается.', 'Unsupported link.'));
   const result = deduplicate(state.media, items);
   state.media = result.media;
+  restoreImported(result.ids);
   return state.media.find(m => m.id === result.ids[0])!;
 }
 const actionFeedback = new Map<string, number>();
@@ -357,7 +408,7 @@ function trackActions(m: Media | undefined, attrs: string, prefix = '') {
 async function toggleFavorite(m: Media) {
   m.favorite = !m.favorite;
   actionFeedback.set(m.id + 'favorite', Date.now());
-  await persist(); render();
+  const saved=persist(); render(); await saved;
   notify(m.favorite ? t('Добавлено в избранное', 'Added to favorites') : t('Убрано из избранного', 'Removed from favorites'));
 }
 async function toggleQueue(m: Media) {
@@ -365,11 +416,11 @@ async function toggleQueue(m: Media) {
   if (queued) removeQueued(state, m.id);
   else state.queue.push(m.id);
   actionFeedback.set(m.id + 'queue', Date.now());
-  await persist(); render(); updatePlayer();
+  const saved=persist(); render(); updatePlayer(); await saved;
   notify(queued ? t('Убрано из очереди', 'Removed from queue') : t('Добавлено в очередь', 'Added to queue'));
 }
 function row(m: Media, index: number) {
-  return `<article class="media-row" data-id="${m.id}"><button class="art ${m.kind}" data-action="play" data-id="${m.id}" aria-label="${t("Воспроизвести", "Play")} ${esc(m.title)}">${m.artwork ? `<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">` : icons[m.kind as keyof typeof icons] || "▷"}</button><button class="media-title" data-action="details" data-id="${m.id}"><strong>${esc(m.title)}</strong><span>${esc(m.artist || m.album || "—")}</span>${m.position > 0 ? `<small>${t("Продолжить с", "Resume at")} ${time(m.position)}</small>` : ""}</button><span class="source-tag">${esc(m.source)}</span><span class="row-time">${m.kind === "radio" || m.kind === "live" ? "LIVE" : time(m.duration)}</span>${m.source==='youtube'?`<button class="track-action offline-action" data-action="offline" data-id="${m.id}" title="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-label="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-pressed="${!!offline?.available(m)}" ${offline?.available(m)?'disabled':''}>${icon(offline?.available(m)?'offline-ready':offline?.progress.has(m.id)?'close':'offline')}${offline?.progress.has(m.id)?`<small>${offline.progress.get(m.id)}%</small>`:''}</button>`:''}${trackActions(m, `data-id="${m.id}"`)}<button class="track-action" data-action="choose-playlists" data-id="${m.id}" title="${t("В плейлист", "Add to playlist")}" aria-label="${t("В плейлист", "Add to playlist")}">${icon("playlists")}</button>${view === "playlists" && playlistId && !state.playlists.find(p=>p.id===playlistId)?.rule ? `<button class="track-action" data-action="playlist-remove-item" data-id="${m.id}" title="${t("Убрать из плейлиста", "Remove from playlist")}" aria-label="${t("Убрать из плейлиста", "Remove from playlist")}">${icon("close")}</button>` : ""}<button class="track-action delete-action" data-action="delete" data-id="${m.id}" title="${t("Удалить из медиатеки", "Delete from library")}" aria-label="${t("Удалить из медиатеки", "Delete from library")}">${icon("trash")}</button>${view === "queue" ? `<button data-action="queue-up" data-index="${index}" aria-label="Move up">${icon("arrow-up")}</button><button data-action="queue-remove" data-index="${index}" aria-label="Remove from queue">${icon("close")}</button>` : ""}</article>`;
+  return `<article class="media-row${selectedMedia.has(m.id)?' is-selected':''}" data-id="${m.id}">${selectionMode?`<button class="track-action" data-action="select-item" data-id="${m.id}" aria-pressed="${selectedMedia.has(m.id)}" aria-label="${t('Выбрать запись','Select item')}">${icon(selectedMedia.has(m.id)?'check':'plus')}</button>`:''}<button class="art ${m.kind}" data-action="play" data-id="${m.id}" aria-label="${t("Воспроизвести", "Play")} ${esc(m.title)}">${m.artwork ? `<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">` : icons[m.kind as keyof typeof icons] || "▷"}</button><button class="media-title" data-action="play" data-id="${m.id}"><strong>${esc(m.title)}</strong><span>${esc(m.artist || m.album || "—")}</span>${m.position > 0 ? `<small>${t("Продолжить с", "Resume at")} ${time(m.position)}</small>` : ""}</button><span class="source-tag">${esc(m.source)}</span><span class="row-time">${m.kind === "radio" || m.kind === "live" ? "LIVE" : time(m.duration)}</span>${m.source==='youtube'?`<button class="track-action offline-action" data-action="offline" data-id="${m.id}" title="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-label="${offline?.available(m)?t('Доступно офлайн','Available offline'):offline?.progress.has(m.id)?t('Отменить офлайн-загрузку','Cancel offline caching'):t('Сделать доступным офлайн','Make available offline')}" aria-pressed="${!!offline?.available(m)}" ${offline?.available(m)?'disabled':''}>${icon(offline?.available(m)?'offline-ready':offline?.progress.has(m.id)?'close':'offline')}${offline?.progress.has(m.id)?`<small>${offline.progress.get(m.id)}%</small>`:''}</button>`:''}<button class="track-action" data-action="play" data-id="${m.id}" aria-label="${t('Воспроизвести','Play')}">${icon('play')}</button>${trackActions(m, `data-id="${m.id}"`)}<button class="track-action" data-action="details" data-id="${m.id}" aria-label="${t('Сведения','Details')}">${icon('settings')}</button><button class="track-action" data-action="choose-playlists" data-id="${m.id}" title="${t("В плейлист", "Add to playlist")}" aria-label="${t("В плейлист", "Add to playlist")}">${icon("playlists")}</button>${view === "playlists" && playlistId && !state.playlists.find(p=>p.id===playlistId)?.rule ? `<button class="track-action" data-action="playlist-remove-item" data-id="${m.id}" title="${t("Убрать из плейлиста", "Remove from playlist")}" aria-label="${t("Убрать из плейлиста", "Remove from playlist")}">${icon("close")}</button>` : ""}<button class="track-action delete-action" data-action="delete" data-id="${m.id}" title="${t("Удалить из медиатеки", "Delete from library")}" aria-label="${t("Удалить из медиатеки", "Delete from library")}">${icon("trash")}</button>${view === "queue" ? `<button data-action="queue-up" data-index="${index}" aria-label="Move up">${icon("arrow-up")}</button><button data-action="queue-remove" data-index="${index}" aria-label="Remove from queue">${icon("close")}</button>` : ""}</article>`;
 }
 function choosePlaylists(id: string) {
   const m = state.media.find(m => m.id === id); if (!m) return;
@@ -401,13 +452,8 @@ const radio = new RadioView(
     );
     if (!existing) state.media.push(m);
     const id = existing?.id || m.id;
-    let i = state.queue.indexOf(id);
-    if (i < 0) {
-      state.queue.push(id);
-      i = state.queue.length - 1;
-    }
     await persist();
-    await player.load(i);
+    await player.playId(id);
     render();
   },
 );
@@ -463,7 +509,7 @@ function render() {
     return;
   }
   if (view === 'search') {
-    target.innerHTML = `<div class="heading"><h1>${t('Поиск','Search')}</h1></div>${searchBusy?`<p role="status">${t('Ищем…','Searching…')}</p>`:''}${searchMessage?`<div class="search-status" role="status"><p>${esc(searchMessage)}</p><button data-action="retry-search" aria-label="${t('Повторить поиск','Retry search')}" title="${t('Повторить поиск','Retry search')}">${icon('refresh')}</button></div>`:''}${remoteItems.length?`<div class="media-list">${remoteItems.map((m,i)=>`<article class="media-row remote-result"><button class="art" data-action="provider-play" data-index="${i}" aria-label="${t('Воспроизвести','Play')}">${m.artwork?`<img src="${esc(m.artwork)}" alt="" loading="lazy">`:icon('play')}</button><div class="media-title"><strong>${esc(m.title)}</strong><span>${esc(m.artist||m.provider)}</span></div>${trackActions(savedResult(m), `data-index="${i}"`, "provider-")}</article>`).join('')}</div>`:''}<h2>${t('В медиатеке','In your library')}</h2><div class="media-list">${filtered().map(row).join('')}</div>`;
+    target.innerHTML = `<div class="heading"><h1>${browseInfo?esc(browseInfo.title):t('Поиск','Search')}</h1></div>${browseInfo?`<article class="source-card">${browseInfo.artwork?`<img class="channel-art" src="${esc(browseInfo.artwork)}" alt="">`:''}<p>${esc(browseInfo.description)}</p><button data-action="import-collection" class="primary">${icon('plus')} ${t('Добавить плейлист в медиатеку','Add collection as playlist')}</button></article>`:''}${searchBusy?`<p role="status">${t('Ищем…','Searching…')}</p>`:''}${searchMessage?`<div class="search-status" role="status"><p>${esc(searchMessage)}</p><button data-action="retry-search" aria-label="${t('Повторить поиск','Retry search')}" title="${t('Повторить поиск','Retry search')}">${icon('refresh')}</button></div>`:''}${remoteItems.length?`<div class="media-list">${remoteItems.map((m,i)=>`<article class="media-row remote-result"><button class="art" data-action="provider-play" data-index="${i}" aria-label="${t('Воспроизвести','Play')}">${m.artwork?`<img src="${esc(m.artwork)}" alt="" loading="lazy">`:icon('play')}</button><button class="media-title" data-action="provider-play" data-index="${i}"><strong>${esc(m.title)}</strong><span>${esc(m.artist||m.provider)}</span></button>${m.channelUrl?`<button class="track-action" data-action="provider-channel" data-index="${i}" title="${t('Открыть исполнителя','Open artist channel')}" aria-label="${t('Открыть исполнителя','Open artist channel')}">${icon('artists')}</button>`:''}<button class="track-action" data-action="provider-play" data-index="${i}" aria-label="${t('Воспроизвести','Play')}">${icon('play')}</button>${trackActions(savedResult(m), `data-index="${i}"`, "provider-")}</article>`).join('')}</div>`:''}${browseInfo?.next?`<button data-action="browse-more">${t('Загрузить ещё','Load more')}</button>`:''}<h2>${t('В медиатеке','In your library')}</h2><div class="media-list">${filtered().map(row).join('')}</div>`;
     return;
   }
   if (view === "settings") {
@@ -561,7 +607,7 @@ function render() {
      "",
    )}</div><select id="sort" aria-label="${t("Сортировка", "Sort")}"><option value="added" ${sort === "added" ? "selected" : ""}>${t("По дате", "Recent")}</option><option value="title" ${sort === "title" ? "selected" : ""}>${t("По названию", "Title")}</option><option value="plays" ${sort === "plays" ? "selected" : ""}>${t("По запускам", "Most played")}</option></select></div>
  ${rows.length ? `<div class="media-list">${rows.map((m, i) => row(m, view === "queue" ? state.queue.map((id, index) => ({ id, index })).filter((item) => rows.some((row) => row.id === item.id))[i].index : i)).join("")}</div>` : `<div class="empty"><span>${icon("library")}</span><h2>${query ? t("Не найдено", "No results") : t("Пусто", "Empty")}</h2><button data-action="import">${icon("plus")} ${t("Импорт", "Import")}</button></div>`}
- <div class="library-tools"><button data-action="export-library" title="${t("Экспорт метаданных", "Export metadata")}" aria-label="${t("Экспорт метаданных", "Export metadata")}">${icon("download")}</button><button data-action="persist" title="${t("Постоянное хранилище", "Persistent storage")}" aria-label="${t("Постоянное хранилище", "Persistent storage")}">${icon("hard-drive")}</button></div>`;
+ ${selectionMode?`<div class="selection-toolbar" role="status"><strong>${t('Выбрано','Selected')}: ${selectedMedia.size}</strong><button data-action="select-all">${t('Выбрать все','Select all')}</button><button data-action="delete-selected" class="danger" ${selectedMedia.size?'':'disabled'}>${icon('trash')} ${t('Удалить выбранное','Delete selected')}</button><button data-action="selection-close">${t('Отмена','Cancel')}</button></div>`:''}<div class="library-tools"><button data-action="selection-start">${icon('check')} ${t('Выбрать несколько','Select multiple')}</button><button data-action="export-library" title="${t("Экспорт метаданных", "Export metadata")}" aria-label="${t("Экспорт метаданных", "Export metadata")}">${icon("download")}</button><button data-action="persist" title="${t("Постоянное хранилище", "Persistent storage")}" aria-label="${t("Постоянное хранилище", "Persistent storage")}">${icon("hard-drive")}</button></div>`;
   target.querySelector("#sort")?.addEventListener("change", (e) => {
     sort = (e.target as HTMLSelectElement).value;
     render();
@@ -574,17 +620,20 @@ function updatePlayer() {
     m?.title || t("Пауза", "Paused");
   document.querySelector("#now-artist")!.textContent =
     m?.artist || m?.source || "Delta Media";
-  document.querySelector("#toggle")!.innerHTML = icon(
-    player.playing ? "pause" : "play",
-  );
+  const toggle=document.querySelector<HTMLElement>('#toggle')!;
+  const playing=String(player.playing);
+  if(toggle.dataset.playing!==playing){toggle.dataset.playing=playing;toggle.innerHTML=icon(player.playing?'pause':'play');}
+  const art=document.querySelector<HTMLElement>('.mini-art')!;
+  if(art.dataset.artwork!==(m?.artwork||'')){art.dataset.artwork=m?.artwork||'';art.innerHTML=m?.artwork?`<img alt="" referrerpolicy="no-referrer" src="${esc(m.artwork)}">`:icon('audio');}
   document.querySelector("#elapsed")!.textContent = time(player.position);
   document.querySelector("#duration")!.textContent =
     m?.kind === "radio" || m?.kind === "live" ? "LIVE" : time(player.duration);
   document.querySelector<HTMLInputElement>("#volume")!.disabled = !!m?.embed && m.source === "spotify";
+  const showVideo=document.querySelector<HTMLButtonElement>('#video-show');if(showVideo)showVideo.hidden=!(m?.embed||m?.kind==='video');
   const range = document.querySelector<HTMLInputElement>("#seek")!;
   range.disabled = player.duration === 0;
   range.max = String(player.duration || 100);
-  range.value = String(player.position);
+  if(document.activeElement!==range)range.value = String(player.position);
   document
     .querySelector("#shuffle")!
     .classList.toggle("selected", state.shuffle);
@@ -626,6 +675,10 @@ function importDialog() {
         const data = new FormData(form);
         const u = directUrl(String(data.get("url"))),
           kind = String(data.get("kind"));
+        const collectionURL=new URL(u);
+        if(host&&/(^|\.)youtube\.com$/.test(collectionURL.hostname)&&collectionURL.searchParams.has('list')){
+          await importCollection(u);document.querySelector<HTMLDialogElement>('#dialog')!.close();return;
+        }
         if (kind === "rss") {
           notify(t("Загрузка ленты…", "Loading feed…"));
           await addMedia(await fetchFeed(u));
@@ -667,6 +720,7 @@ async function addMedia(incoming: Media[], playlistName?: string) {
     );
   const result = deduplicate(state.media, incoming);
   state.media = result.media;
+  restoreImported(result.ids);
   if (playlistName)
     state.playlists.push({ id: uid(), name: playlistName, items: result.ids });
   await persist();
@@ -690,6 +744,7 @@ async function importFiles(files: File[]) {
         imported.media.map((m, i) => [m.id, result.ids[i]]),
       );
       state.media = result.media;
+  restoreImported(result.ids);
       for (const p of imported.playlists) {
         p.items = p.items.map((id) => mapping.get(id)!).filter(Boolean);
         state.playlists.push(p);
@@ -842,18 +897,17 @@ const actionHandlers: Record<
       state.media.push(track);
       await persist();
     }
-    let i = state.queue.indexOf(id);
-    if (i < 0) {
-      state.queue.push(id);
-      i = state.queue.length - 1;
-    }
-    await player.load(i);
+    await player.playId(id);
     render();
   },
+  'video-show': () => {videoMode='normal';view='player';location.hash='player';render();videoPresentation();},
   'video-compact': () => {videoMode='compact';videoPresentation();},
   'video-normal': () => {videoMode='normal';videoPresentation();},
   'video-hide': () => {videoMode='hidden';videoPresentation();},
   'video-restore': () => {videoMode='normal';videoPresentation();},
+  'provider-channel': el => browseCollection(String(remoteItems[Number(el.dataset.index)].channelUrl)),
+  'browse-more': () => browseInfo&&browseCollection(browseInfo.url,browseInfo.next),
+  'import-collection': () => browseInfo&&importCollection(browseInfo.url),
   'retry-search': () => searchProviders(query),
   'provider-play': async el => receiveMedia(true, remoteItems[Number(el.dataset.index)]),
   'provider-enqueue': async el => toggleQueue(importResult(remoteItems[Number(el.dataset.index)])),
@@ -1040,35 +1094,43 @@ const actionHandlers: Record<
         m.title + "." + (m.mime?.split("/")[1] || "media"),
       );
   },
-  delete: (el) => {
-    const id = el.dataset.id!;
-    modal(
-      `<h2>${t("Удалить запись и локальную копию?", "Delete item and its local copy?")}</h2><p>${t("Это действие нельзя отменить.", "This cannot be undone.")}</p><button data-action="confirm-delete" data-id="${id}" class="danger">${icon("trash")} ${t("Удалить", "Delete")}</button>`,
-    );
-  },
-  "confirm-delete": async (el) => {
-    const id = el.dataset.id!,
-      m = state.media.find((m) => m.id === id)!;
-    if (player.current?.id === id) await player.stop();
-    state.pendingRemovals = [...new Set([...(state.pendingRemovals || []), id])];
-    state.media = state.media.filter((m) => m.id !== id);
-    const removedBefore = state.queue
-      .slice(0, state.queueIndex)
-      .filter((x) => x === id).length;
-    state.queue = state.queue.filter((x) => x !== id);
-    state.queueIndex = Math.max(
-      0,
-      Math.min(state.queueIndex - removedBefore, state.queue.length - 1),
-    );
-    for (const p of state.playlists) p.items = p.items.filter((x) => x !== id);
-    await persist();
-    if (m.fileId) await storage.removeFile(m.fileId);
-    document.querySelector<HTMLDialogElement>("#dialog")!.close();
-    render();
-    updatePlayer();
-    notify(t("Удалено из медиатеки", "Deleted from library"));
+  'selection-start': () => {selectionMode=true;render();},
+  'selection-close': () => {selectionMode=false;selectedMedia.clear();render();},
+  'select-item': el => {const id=el.dataset.id!;selectedMedia.has(id)?selectedMedia.delete(id):selectedMedia.add(id);render();},
+  'select-all': () => {filtered().forEach(m=>selectedMedia.add(m.id));render();},
+  'delete-selected': () => requestDelete([...selectedMedia]),
+  delete: el => requestDelete([el.dataset.id!]),
+  'confirm-delete': async () => {
+    if(document.querySelector<HTMLInputElement>('#skip-delete-confirm')?.checked)
+      localStorage.setItem('delta-media.delete-confirm-until',String(Date.now()+3600000));
+    await deleteMedia(deleteIds);
   },
 };
+function requestDelete(ids:string[]) {
+  deleteIds=ids.filter(id=>state.media.some(m=>m.id===id));if(!deleteIds.length)return;
+  const until=Number(localStorage.getItem('delta-media.delete-confirm-until'));
+  if(until>Date.now()&&until<=Date.now()+3600000){run(()=>deleteMedia(deleteIds));return;}
+  modal(`<h2>${t('Удалить выбранные записи и локальные копии?','Delete selected items and local copies?')}</h2><p>${deleteIds.length} · ${t('Это действие нельзя отменить.','This cannot be undone.')}</p><label><input type="checkbox" id="skip-delete-confirm">${t('Больше не спрашивать в течение часа','Do not ask again for one hour')}</label><button data-action="confirm-delete" class="danger">${icon('trash')} ${t('Удалить','Delete')}</button>`);
+}
+async function deleteMedia(ids:string[]) {
+  const removed=state.media.filter(m=>ids.includes(m.id));
+  if(player.current&&ids.includes(player.current.id))await player.stop();
+  state.pendingRemovals=[...new Set([...(state.pendingRemovals||[]),...ids])];
+  state.deletedIds=[...new Set([...(state.deletedIds||[]),...ids])];
+  state.media=state.media.filter(m=>!ids.includes(m.id));
+  state.pendingRestores=(state.pendingRestores||[]).filter(id=>!ids.includes(id));
+  const currentId=player.current?.id;
+  state.queue=state.queue.filter(id=>!ids.includes(id));state.queueIndex=currentId?state.queue.indexOf(currentId):0;
+  for(const p of state.playlists)p.items=p.items.filter(id=>!ids.includes(id));
+  ids.forEach(id=>selectedMedia.delete(id));
+  const saved=persist();document.querySelector<HTMLDialogElement>('#dialog')!.close();render();updatePlayer();await saved;
+  for(const m of removed)if(m.fileId)await storage.removeFile(m.fileId);
+  notify(t('Удалено из медиатеки','Deleted from library'));void synchronize();
+}
+app.addEventListener('contextmenu',e=>{
+  const row=(e.target as Element).closest<HTMLElement>('.media-row[data-id]');
+  if(!row)return;e.preventDefault();selectionMode=true;selectedMedia.add(row.dataset.id!);render();
+});
 app.addEventListener("click", (e) => {
   const el = (e.target as Element).closest<HTMLElement>("[data-action]");
   if (el) {
@@ -1119,13 +1181,12 @@ async function receiveMedia(play: boolean, payload: unknown) {
   if (!items.length) throw Error(t("Ссылка не поддерживается.", "Unsupported link."));
   const result = deduplicate(state.media, items);
   state.media = result.media;
+  restoreImported(result.ids);
   if (play) {
-    const at = state.queue.length ? state.queueIndex + 1 : 0;
-    state.queue.splice(at, 0, ...result.ids);
     await persist();
-    await player.load(at);
+    await player.playId(result.ids[0]);
   } else {
-    state.queue.push(...result.ids);
+    state.queue=[...new Set([...state.queue,...result.ids])];
     await persist();
     notify(t(`В очереди: ${result.ids.length}`, `Queued: ${result.ids.length}`));
   }
@@ -1178,12 +1239,10 @@ async function boot() {
   player.addEventListener("failure", (e) =>
     notify((e as CustomEvent).detail, true),
   );
-  if (shared.primary && state.queue.length) {
+  if (shared.primary && (state.currentId || state.queue.length)) {
     try {
-      await player.load(
-        Math.max(0, Math.min(state.queueIndex, state.queue.length - 1)),
-        false,
-      );
+      const restoredId = state.media.some(m => m.id === state.currentId) ? state.currentId! : state.queue[Math.max(0, Math.min(state.queueIndex, state.queue.length - 1))];
+      if (restoredId) await player.playId(restoredId, false);
     } catch (e) {
       notify((e as Error).message, true);
     }
