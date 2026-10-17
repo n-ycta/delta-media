@@ -1,0 +1,19 @@
+/* Typefaces of the Delta skins (Cyrillic + Latin subsets). Frames cannot borrow host fonts. */
+import "@fontsource/manrope/cyrillic-400.css";
+import "@fontsource/manrope/latin-400.css";
+import "@fontsource/manrope/cyrillic-700.css";
+import "@fontsource/manrope/latin-700.css";
+import "@fontsource/onest/cyrillic-400.css";
+import "@fontsource/onest/latin-400.css";
+import "@fontsource/onest/cyrillic-700.css";
+import "@fontsource/onest/latin-700.css";
+import "@fontsource/golos-text/cyrillic-400.css";
+import "@fontsource/golos-text/latin-400.css";
+import "@fontsource/golos-text/cyrillic-600.css";
+import "@fontsource/golos-text/latin-600.css";
+import "@fontsource/literata/cyrillic-600-italic.css";
+import "@fontsource/literata/latin-600-italic.css";
+import "@fontsource/jetbrains-mono/cyrillic-400.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/cyrillic-700.css";
+import "@fontsource/jetbrains-mono/latin-700.css";

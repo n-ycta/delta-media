@@ -6,7 +6,9 @@ import {
   hiddenSurfaces,
   watchPresentation,
 } from "./surfaces";
-import { connectPlugin, type AppContext } from "@delta/ui/sdk/client";
+import { connectPlugin, applyThemeTokens, type AppContext } from "@delta/ui/sdk/client";
+import { intentItems } from "./host";
+import "./fonts";
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
@@ -36,6 +38,7 @@ import { parsePlaylist, exportPlaylist } from "./playlists";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const launch = new URL(location.href).searchParams;
 let hostContext: AppContext | undefined;
+let host: Awaited<ReturnType<typeof connectPlugin>> | undefined;
 let sdkError = "";
 if (parent !== window && launch.get("embedded") === "1") {
   try {
@@ -43,6 +46,12 @@ if (parent !== window && launch.get("embedded") === "1") {
     if (!parentOrigin) throw Error("missing_parent_origin");
     const connection = await connectPlugin(parentOrigin);
     hostContext = connection.context;
+    host = connection;
+    applyThemeTokens(hostContext.tokens);
+    connection.onPresentation((c) => {
+      applyThemeTokens(c.tokens);
+      if (c.tokens) document.documentElement.dataset.theme = theme = c.tokens.scheme;
+    });
     window.addEventListener("pagehide", () => connection.close(), {
       once: true,
     });
@@ -53,8 +62,12 @@ if (parent !== window && launch.get("embedded") === "1") {
 let language =
   localStorage.getItem("delta-media.language") || hostContext?.language || "en";
 const t = (ru: string, en: string) => (language === "ru" ? ru : en);
-const preference =
-  localStorage.getItem("delta-media.theme") || hostContext?.theme;
+/** Inside Delta the one global theme wins; the app's own toggle is for standalone use. */
+const hostThemed = !!hostContext?.tokens;
+if (hostThemed) document.documentElement.classList.add("host-themed");
+const preference = hostThemed
+  ? hostContext!.tokens!.scheme
+  : localStorage.getItem("delta-media.theme") || hostContext?.theme;
 let theme =
   preference === "light" || preference === "dark"
     ? preference
@@ -163,7 +176,7 @@ function labels(): Record<string, string> {
   };
 }
 function shell() {
-  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>media 0.1</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary">${icon("plus")} ${t("Импорт", "Import")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>media 0.1</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary">${icon("plus")} ${t("Импорт", "Import")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
   document
     .querySelector<HTMLInputElement>("#search")!
     .addEventListener("input", (e) => {
@@ -403,7 +416,7 @@ function updatePlayer() {
   document.querySelector("#now-artist")!.textContent =
     m?.artist || m?.source || "Delta Media";
   document.querySelector("#toggle")!.innerHTML = icon(
-    el.paused ? "play" : "pause",
+    player.playing ? "pause" : "play",
   );
   document.querySelector("#elapsed")!.textContent = time(el.currentTime);
   document.querySelector("#duration")!.textContent =
@@ -914,6 +927,54 @@ app.addEventListener("click", (e) => {
     });
   }
 });
+let lastReport = "",
+  lastReportAt = 0;
+/** The shell's dock mini-player and desktops show what plays here. */
+function reportToHost() {
+  if (!host) return;
+  const m = player.current;
+  if (!m) {
+    if (lastReport !== "idle") host.reportMedia(null);
+    lastReport = "idle";
+    return;
+  }
+  const el = player.element;
+  const state_ = {
+    playing: player.playing,
+    title: m.title,
+    subtitle: m.artist || m.album || "",
+    canNext: state.queue.length > 1,
+    canPrev: state.queueIndex > 0,
+  };
+  const key = JSON.stringify(state_);
+  const now = Date.now();
+  if (key === lastReport && now - lastReportAt < 5000) return;
+  lastReport = key;
+  lastReportAt = now;
+  host.reportMedia({
+    ...state_,
+    position: Number.isFinite(el.currentTime) ? Math.floor(el.currentTime) : undefined,
+    duration: Number.isFinite(el.duration) ? Math.floor(el.duration) : m.duration,
+  });
+}
+/** media.play / media.enqueue from source apps (YouTube, SoundCloud, Spotify…). */
+async function receiveMedia(play: boolean, payload: unknown) {
+  const items = intentItems(payload);
+  if (!items.length) throw Error(t("Ссылка не поддерживается.", "Unsupported link."));
+  const result = deduplicate(state.media, items);
+  state.media = result.media;
+  if (play) {
+    const at = state.queue.length ? state.queueIndex + 1 : 0;
+    state.queue.splice(at, 0, ...result.ids);
+    await persist();
+    await player.load(at);
+  } else {
+    state.queue.push(...result.ids);
+    await persist();
+    notify(t(`В очереди: ${result.ids.length}`, `Queued: ${result.ids.length}`));
+  }
+  render();
+}
 async function boot() {
   if (
     "serviceWorker" in navigator &&
@@ -931,8 +992,18 @@ async function boot() {
     state,
     storage,
     persist,
+    document.querySelector<HTMLIFrameElement>("#embed")!,
   );
   player.addEventListener("change", updatePlayer);
+  player.addEventListener("change", reportToHost);
+  host?.onMediaCommand((c) => {
+    const go = { toggle: () => player.toggle(), play: () => player.play(), pause: () => player.pause(), next: () => player.next(), prev: () => player.previous() }[c];
+    void Promise.resolve(go?.()).catch((e) => notify((e as Error).message, true));
+  });
+  host?.onIntent((intent, payload) => {
+    if (intent !== "media.play" && intent !== "media.enqueue") return;
+    void receiveMedia(intent === "media.play", payload).catch((e) => notify((e as Error).message, true));
+  });
   player.addEventListener("failure", (e) =>
     notify((e as CustomEvent).detail, true),
   );

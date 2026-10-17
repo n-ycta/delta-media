@@ -1,7 +1,7 @@
 {
   "id": "dev.delta.media",
   "name": "Delta Media",
-  "version": "0.1.0-alpha.3",
+  "version": "0.2.0",
   "entry": "index.html",
   "runtime": {
     "execution": "web",
@@ -38,7 +38,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -53,7 +53,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -68,7 +68,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -83,7 +83,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -98,7 +98,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -113,7 +113,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -128,7 +128,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -143,7 +143,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       },
       {
@@ -158,7 +158,7 @@
         "minHeight": 320,
         "instance": "shared",
         "requires": [
-          "dev.delta.media>=0.1.0-alpha.3"
+          "dev.delta.media>=0.2.0"
         ]
       }
     ]

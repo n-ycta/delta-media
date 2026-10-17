@@ -39,3 +39,21 @@
   --overlay: rgba(0, 0, 0, .55);
   color-scheme: dark;
 }
+
+/* Inside Delta: the one global skin (SDK applyThemeTokens → --delta-*) replaces local tokens. */
+:root[data-delta-skin] {
+  --bg: var(--delta-bg); --surface: var(--delta-surface); --surface-2: var(--delta-surface2); --sunken: var(--delta-sunken);
+  --hover: var(--delta-hover); --selected: var(--delta-selected);
+  --ink: var(--delta-ink); --ink-2: var(--delta-ink2); --muted: var(--delta-muted); --faint: var(--delta-faint);
+  --rule: var(--delta-rule); --rule-strong: var(--delta-rule-strong);
+  --accent: var(--delta-accent); --accent-weak: var(--delta-accent-weak); --accent-ink: var(--delta-accent-ink);
+  --ok: var(--delta-ok); --warn: var(--delta-warn); --err: var(--delta-err); --info: var(--delta-info);
+  --overlay: var(--delta-overlay);
+  --font-sans: var(--delta-font-sans); --font-mono: var(--delta-font-mono); --font-heading: var(--delta-font-heading);
+  --r-sm: var(--delta-r-sm); --r-md: var(--delta-r-md); --r-lg: var(--delta-r-lg);
+}
+:root[data-delta-skin] h1, :root[data-delta-skin] h2 { font-family: var(--font-heading, var(--font-sans)); font-weight: var(--delta-heading-weight, 600); text-transform: var(--delta-heading-case, none); letter-spacing: var(--delta-heading-tracking, normal); }
+:root[data-delta-skin="gruvbox"] h1 { font-style: italic; }
+.host-themed [data-action="theme"], .host-themed label[for="theme-select"], .host-themed #theme-select { display: none !important; }
+#embed { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 60vh; border: 0; border-radius: var(--r-lg); background: #000; }
+#embed[hidden] { display: none; }

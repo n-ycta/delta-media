@@ -1,5 +1,6 @@
 import { nextIndex, uid, type State, type Media } from "./model";
 import { Storage } from "./storage";
+import { EmbedController, embedUrl } from "./embeds";
 export class Player extends EventTarget {
   private objectUrl = "";
   private session = false;
@@ -10,13 +11,24 @@ export class Player extends EventTarget {
   private metadataReady = false;
   private restorePosition = 0;
   current?: Media;
+  readonly embed?: EmbedController;
   constructor(
     readonly element: HTMLVideoElement,
     readonly state: State,
     readonly storage: Storage,
     readonly save: () => Promise<void>,
+    embedFrame?: HTMLIFrameElement,
   ) {
     super();
+    if (embedFrame)
+      this.embed = new EmbedController(
+        embedFrame,
+        () => this.change(),
+        () =>
+          void this.next(true).catch((e) =>
+            this.dispatchEvent(new CustomEvent("failure", { detail: e.message })),
+          ),
+      );
     element.volume = state.volume;
     element.addEventListener("loadedmetadata", () => {
       const m = this.current;
@@ -153,6 +165,19 @@ export class Player extends EventTarget {
     }
     this.element.removeAttribute("src");
     this.element.load();
+    if (m.embed && this.embed) {
+      const e = embedUrl(m.embed);
+      this.element.hidden = true;
+      if ("mediaSession" in navigator)
+        navigator.mediaSession.metadata = new MediaMetadata({ title: m.title, artist: m.artist || "", album: m.album || "" });
+      m.lastPlayed = Date.now();
+      m.plays++;
+      if (autoplay) this.embed.open(e.provider, e.url);
+      await this.save();
+      this.change();
+      return;
+    }
+    this.embed?.close();
     const source = m.fileId ? await this.storage.file(m.fileId) : m.url;
     if (generation !== this.generation) return;
     if (!source) throw Error("This item has no playable source.");
@@ -172,7 +197,22 @@ export class Player extends EventTarget {
     this.change();
     if (autoplay) await this.play();
   }
+  /** True while audio/video or a provider player is playing. */
+  get playing(): boolean {
+    return this.current?.embed && this.embed ? this.embed.playing : !this.element.paused;
+  }
+  pause() {
+    if (this.current?.embed && this.embed) this.embed.pause();
+    else this.element.pause();
+  }
   async play(): Promise<void> {
+    if (this.current?.embed && this.embed) {
+      if (!this.embed.provider) {
+        const e = embedUrl(this.current.embed);
+        this.embed.open(e.provider, e.url);
+      } else this.embed.play();
+      return;
+    }
     try {
       await this.element.play();
     } catch (e) {
@@ -182,8 +222,8 @@ export class Player extends EventTarget {
     }
   }
   async toggle(): Promise<void> {
-    if (this.element.paused) await this.play();
-    else this.element.pause();
+    if (!this.playing) await this.play();
+    else this.pause();
   }
   seek(time: number) {
     if (!Number.isFinite(time)) return;

@@ -9,7 +9,9 @@ export type SourceId =
   | "blossom"
   | "vk"
   | "rutube"
-  | "twitch";
+  | "twitch"
+  | "soundcloud"
+  | "spotify";
 export interface Chapter {
   title: string;
   start: number;
@@ -26,6 +28,8 @@ export interface Media {
   kind: MediaKind;
   title: string;
   url?: string;
+  /** Official provider player (YouTube/SoundCloud/Spotify) when there is no direct stream. */
+  embed?: string;
   fileId?: string;
   mime?: string;
   artist?: string;

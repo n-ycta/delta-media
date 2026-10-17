@@ -1,3 +1,10 @@
+## 0.2.0
+
+- Host integration: follows the global Delta theme/skin (`applyThemeTokens`, `onPresentation`), reports playback state to the host mini-player (`reportMedia`) and obeys host media commands (`onMediaCommand`).
+- Receives `media.play` / `media.enqueue` intents from other apps (e.g. Delta YouTube, SoundCloud, Spotify provider apps).
+- YouTube, SoundCloud and Spotify links play through the providers' official embedded players (Spotify: 30 s previews unless signed in to Spotify in the same WebView).
+- Bundled Manrope, Golos Text, Literata, Onest and JetBrains Mono fonts for the four Delta skins.
+
 Experimental portable Delta Media client — not full service parity.
 
 - Real local audio/video, direct HTTPS/radio and RSS/Atom playback where the host decoder and source permissions allow it.

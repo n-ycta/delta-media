@@ -10,7 +10,7 @@ Track search means a station's **published catalog**, not recognition of its cur
 
 `app.manifest.json` declares v1 shared surfaces for library, music, video, podcasts, audiobooks, radio, playlists, queue and listening statistics. Open a surface with `?surface=radio&chrome=0`. Within Delta, presentation changes require the existing parent origin/source and SDK channel. Navigation and theme changes reuse the same player. Navigation tabs can be hidden in Settings without deleting data. Settings remains accessible.
 
-One shared app instance is supported. Multiple simultaneous independent plugin panels are not promised. Standalone Delta workbench HTML provides local-file playback, not the full Media app. Install Media `0.1.0-alpha.3` or later for these declared surfaces.
+One shared app instance is supported. Multiple simultaneous independent plugin panels are not promised. Standalone Delta workbench HTML provides local-file playback, not the full Media app. Install Media `0.2.0` or later for these declared surfaces.
 
 ## Verification
 

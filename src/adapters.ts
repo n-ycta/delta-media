@@ -68,11 +68,25 @@ export const adapters: SourceAdapter[] = [
     reason:
       "Explicit import from file or HTTPS fetch with source CORS permission. No proxy. Only explicit enclosures are playable.",
   },
-  ...(["youtube", "nostr", "blossom", "vk", "rutube", "twitch"] as const).map(
+  ...(["youtube", "soundcloud", "spotify"] as const).map((id) => ({
+    id,
+    label: { youtube: "YouTube", soundcloud: "SoundCloud", spotify: "Spotify" }[
+      id
+    ],
+    status: "ready" as const,
+    operations: {
+      ...no,
+      search: "Via provider app intent (media.play / media.enqueue)",
+      metadata: "Title/artist/artwork supplied by the provider app",
+      stream: "Official embedded player",
+    },
+    reason:
+      "Played through the provider's official embed. Search lives in separate provider apps that send media intents; no scraping, DRM or account bypass. Spotify plays previews unless signed in to Spotify.",
+  })),
+  ...(["nostr", "blossom", "vk", "rutube", "twitch"] as const).map(
     (id) => ({
       id,
       label: {
-        youtube: "YouTube",
         nostr: "Nostr",
         blossom: "Blossom",
         vk: "VK Video",
