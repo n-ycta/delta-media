@@ -1,8 +1,8 @@
 # Delta Media
 
-A portable, local-first media engine and standalone web UI for Delta. The client has no Node.js runtime dependency: its modules and browser player are intended for Web, Desktop WebView and Android WebView. Node.js is a development/build tool only.
+A Media plugin with one unified interface, connectable headless providers and a Delta/MCP service API. The browser UI handles playback on the selected device; the service persists the library and queues commands for active devices.
 
-**Current delivery:** working portable client and experimental `delta-app-v1` package, with real isolated Plugin UI SDK embedding tests. Portable package installation and UI startup passed Android-emulator and installed Linux/Windows host acceptance. Native decoder/background acceptance and Delta synchronization are not implemented. A browser test is not APK/EXE acceptance.
+Release packages: `delta-media.tar.gz` (node service) and `delta-media.delta-app` (isolated interface). YouTube/SoundCloud/Spotify are provider plugins, not separate applications. See RELEASE.md for current limits and verification.
 
 ## Run
 
@@ -14,7 +14,7 @@ npm run dev
 ```sh
 npm test
 npm run build
-npm run package:app
+npm run package:plugin
 CHROMIUM_PATH=/path/to/chromium npm run test:browser
 ```
 
@@ -28,7 +28,7 @@ Serve `dist/` from a static HTTPS host or bundle it in a compatible isolated nat
 - Import local audio/video Blobs into IndexedDB without sending file bytes through JSON IPC. The browser streams from the Blob; import does not read the whole media file into JS memory.
 - Direct HTTPS audio/video links, browser-supported radio/live streams; no web page extraction or DRM bypass.
 - RSS/Atom file import and bounded HTTPS feed fetch, explicit media enclosures only. Remote fetch requires CORS. HTTP streams are rejected except loopback development URLs. There is no proxy.
-- Search saved media across any selected combination of sources. This is library search, not a fabricated remote-service search API.
+- Search saved media across any selected combination of sources. Connected provider plugins supply remote search through the service API.
 - Editable metadata, genres, tags, favorites, HTTPS artwork, plain lyrics and synchronized LRC.
 - One decoder/player with persistent queue, shuffle, repeat, volume, seek, history, play/skip counters, elapsed listening time and saved position.
 - Audiobook classification, manually editable chapters and position bookmarks.

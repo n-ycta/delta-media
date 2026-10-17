@@ -1160,3 +1160,10 @@ input[type="range"]:disabled { opacity: .4; cursor: default; }
 .media-no-lyrics .lyrics { display:none; }
 
 .transport button.play { background:var(--accent); color:var(--on-accent, white); border-color:transparent; }
+
+.media-fragment:not([data-media-surface="player"]) footer { display:none; }
+.media-fragment:not([data-media-surface="player"]) .workspace { padding-bottom:0; }
+.media-fragment:is([data-media-surface="player"],[data-media-surface="stats"],[data-media-surface="queue"],[data-media-surface="playlists"],[data-media-surface="visualizer"]) .workspace>header { display:none; }
+.visualizer { height:100%; min-height:180px; display:flex; flex-direction:column; justify-content:center; }
+.visualizer canvas { width:100%; height:180px; }
+.visualizer p { color:var(--muted); font-size:12px; max-width:440px; margin:auto; text-align:center; }

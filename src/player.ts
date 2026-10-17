@@ -32,6 +32,7 @@ export class Player extends EventTarget {
           void this.next(true).catch((e) =>
             this.dispatchEvent(new CustomEvent("failure", { detail: e.message })),
           ),
+        (message) => this.dispatchEvent(new CustomEvent("failure",{detail:message})),
       );
     element.volume = state.volume;
     element.addEventListener("loadedmetadata", () => {

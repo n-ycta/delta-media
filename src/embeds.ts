@@ -62,6 +62,7 @@ export class EmbedController {
     readonly frame: HTMLIFrameElement,
     readonly onChange: () => void,
     readonly onEnded: () => void,
+    readonly onError: (message:string) => void = () => {},
   ) {
     window.addEventListener("message", (e) => {
       if (!this.provider || e.source !== frame.contentWindow || e.origin !== EMBED_ORIGINS[this.provider]) return;
@@ -74,6 +75,11 @@ export class EmbedController {
         }
       }
       if (!d || typeof d !== "object") return;
+      if(this.provider==='youtube'&&d.event==='onReady'){this.handshake();this.play();}
+      if(this.provider==='youtube'&&d.event==='onError'){this.set(false);onError('YouTube could not play this video. Open it on YouTube or choose another item.');}
+      if(this.provider==='spotify'&&d.type==='ready'){this.frame.contentWindow?.postMessage({command:'load_complete_ack'},EMBED_ORIGINS.spotify);this.play();}
+      if(this.provider==='spotify'&&d.type==='error'){this.set(false);onError('Spotify could not play this item. Check access in the embedded player.');}
+
       if (this.provider === "youtube" && d.event === "infoDelivery" && typeof d.info?.playerState === "number") {
         const s = d.info.playerState;
         if (s === 1) this.set(true);
@@ -108,13 +114,16 @@ export class EmbedController {
     this.frame.contentWindow?.postMessage(typeof message === "string" ? message : JSON.stringify(message), EMBED_ORIGINS[this.provider]);
   }
   private handshake() {
-    if (this.provider === "youtube") this.post({ event: "listening", id: 1, channel: "widget" });
+    if (this.provider === "youtube") {
+      this.post({event:"listening",id:1,channel:"widget"});
+      for(const event of ['onStateChange','onError'])this.post({event:'command',func:'addEventListener',args:[event]});
+    }
     if (this.provider === "soundcloud")
       for (const value of ["play", "pause", "finish"]) this.post({ method: "addEventListener", value });
   }
   open(provider: EmbedProvider, url: string) {
     this.provider = provider;
-    this.playing = true;
+    this.playing = false;
     this.frame.src = url;
     this.frame.hidden = false;
     this.onChange();
@@ -128,8 +137,7 @@ export class EmbedController {
   play() {
     if (this.provider === "youtube") this.post({ event: "command", func: "playVideo", args: [] });
     if (this.provider === "soundcloud") this.post({ method: "play" });
-    if (this.provider === "spotify") this.frame.contentWindow?.postMessage({ command: "resume" }, EMBED_ORIGINS.spotify);
-    this.set(true);
+    if (this.provider === "spotify") this.frame.contentWindow?.postMessage({ command: "play" }, EMBED_ORIGINS.spotify);
   }
   pause() {
     if (this.provider === "youtube") this.post({ event: "command", func: "pauseVideo", args: [] });

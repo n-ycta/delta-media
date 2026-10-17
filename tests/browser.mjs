@@ -170,7 +170,7 @@ try {
   await page.locator("[data-action=close]").click();
   results.push("390px layout and import dialog: no horizontal overflow");
   const secondary=await context.newPage();
-  await secondary.goto(origin+'/?surface=queue&chrome=0');
+  await secondary.goto(origin+'/?surface=player&chrome=0');
   await secondary.locator('#toggle').waitFor();
   await page.locator('#toggle').click();
   await secondary.waitForTimeout(600);
@@ -180,6 +180,13 @@ try {
   assert.equal(await page.locator('#media').evaluate(v=>v.paused),true,'secondary pauses primary');
   await secondary.close();
   results.push('Simultaneous panels: one decoder owner, shared pause control');
+  await page.locator('.media-row').filter({hasText:'tone'}).locator('[data-action=play]').first().click();
+  const spectrum=await context.newPage();await spectrum.goto(origin+'/?surface=visualizer&chrome=0');
+  await spectrum.waitForFunction(()=>{const c=document.querySelector('.visualizer canvas');return c&&Array.from(c.getContext('2d').getImageData(0,0,c.width,c.height).data).some((v,i)=>i%4===3&&v>0);},{},{timeout:10000});
+  await spectrum.screenshot({path:path.join(output,'delta-media-actual-spectrum.png')});
+  assert.equal(await spectrum.locator('footer').isVisible(),false);await spectrum.close();await page.locator('#toggle').click();
+  results.push('Visualizer receives real decoded WAV spectrum; no duplicated panel footer');
+
 
   await page.locator("[data-action=view][data-view=sources]").click();
   await page.screenshot({

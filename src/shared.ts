@@ -14,7 +14,8 @@ export async function sharedPlayback() {
     await ready;
   }
   const id=crypto.randomUUID();
-  let player:Player, state:State, changed:()=>void, last=0;
+  let player:Player, state:State, changed:(structure?:boolean)=>void, last=0;
+  let spectrum:number[]|null=null;
   const pending=new Map<string,{resolve:()=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   const snapshot=()=>channel.postMessage({type:'snapshot',state, currentId:player?.current?.id});
   const call=(command:string,args:unknown[])=>new Promise<void>((resolve,reject)=>{
@@ -26,10 +27,11 @@ export async function sharedPlayback() {
   };
   channel.onmessage=async e=>{
     const m=e.data;if(!m||typeof m!=='object'||!player)return;
+    if(m.type==='spectrum'&&!primary)spectrum=Array.isArray(m.bins)?m.bins:null;
     if(m.type==='hello'&&primary)snapshot();
     if(m.type==='snapshot'&&!primary)update(m.state,m.currentId);
     if(m.type==='mutation'&&primary){update(m.state);snapshot();}
-    if(m.type==='playback'&&!primary){player.remotePlaying=m.playing;player.current=state.media.find(v=>v.id===m.currentId);if(player.current&&Number.isFinite(m.position))player.current.position=m.position;changed?.();}
+    if(m.type==='playback'&&!primary){player.remotePlaying=m.playing;player.current=state.media.find(v=>v.id===m.currentId);if(player.current&&Number.isFinite(m.position))player.current.position=m.position;changed?.(false);}
     if(m.type==='command'&&primary&&['load','play','pause','seek','next','previous','toggle'].includes(m.command)){
       try{await (player[m.command as keyof Player] as (...args:any[])=>unknown).apply(player,m.args);snapshot();channel.postMessage({type:'result',to:m.from,request:m.request});}catch(e){channel.postMessage({type:'result',to:m.from,request:m.request,error:(e as Error).message});}
     }
@@ -37,7 +39,9 @@ export async function sharedPlayback() {
   };
   return {
     get primary(){return primary;},
-    attach(p:Player,s:State,onChange:()=>void){
+    get spectrum(){return spectrum;},
+    publishSpectrum(bins:number[]|null){if(primary){spectrum=bins;channel.postMessage({type:"spectrum",bins});}},
+    attach(p:Player,s:State,onChange:(structure?:boolean)=>void){
       player=p;state=s;changed=onChange;
       if(!primary){
         player.delegate=call;channel.postMessage({type:'hello'});

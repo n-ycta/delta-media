@@ -1,3 +1,4 @@
+import {analysePlayback} from "./visualizer";
 import { sharedPlayback } from "./shared";
 import { styledControls } from "./controls";
 import { RadioView } from "./radio-view";
@@ -207,6 +208,7 @@ function labels(): Record<string, string> {
   return {
     home: t("Главная", "Home"),
     player: t("Плеер", "Player"),
+    visualizer: t("Визуализатор", "Visualizer"),
     library: t("Медиатека", "Library"),
     audio: t("Музыка", "Music"),
     artists: t("Исполнители", "Artists"),
@@ -337,11 +339,12 @@ document.documentElement.classList.toggle(
   launch.get("chrome") === "0" && validSurface(launch.get("surface")),
 );
 function render() {
+  document.documentElement.dataset.mediaSurface=view;
   const label = labels();
   const crumb = document.querySelector("#breadcrumb");
   if (crumb) crumb.textContent = label[view] || "media";
   document.querySelector("#nav")!.innerHTML = Object.entries(label)
-    .filter(([id]) => id !== "queue" && !hiddenViews.has(id))
+    .filter(([id]) => !["queue","player","visualizer"].includes(id) && !hiddenViews.has(id))
     .map(
       ([id, name]) =>
         `<button class="${view === id ? "active" : ""}" data-action="view" data-view="${id}"><span>${icons[id as keyof typeof icons]}</span>${name}${id === "library" ? `<small>${state.media.length}</small>` : ""}</button>`,
@@ -358,6 +361,10 @@ function render() {
   }
   if (view === "radio") {
     target.innerHTML = radio.render(query, row, filtered());
+    return;
+  }
+  if(view==='visualizer'){
+    target.innerHTML=`<div class="visualizer"><canvas aria-label="${t('Спектр аудио','Audio spectrum')}"></canvas><p>${t('Спектр доступен для воспроизводимого аудио. Защищённые внешние плееры не передают звук.','Audio spectrum is available for decoded audio. Protected external players do not share their audio.')}</p></div>`;
     return;
   }
   if (view === 'player') {
@@ -393,7 +400,7 @@ function render() {
     const panel = document.createElement("section");
     panel.className = "surface-settings";
     panel.innerHTML = `<h2>${t("Вкладки", "Tabs")}</h2><div>${mediaSurfaces
-      .filter((id) => !["settings", "queue"].includes(id))
+      .filter((id) => !["settings", "queue", "player", "visualizer"].includes(id))
       .map(
         (id) =>
           `<label><input type="checkbox" data-surface="${id}" ${hiddenViews.has(id) ? "" : "checked"}><span>${label[id] || id}</span></label>`,
@@ -1010,7 +1017,7 @@ function reportToHost() {
   lastReportAt = now;
   host.reportMedia({
     ...state_,
-    position: Number.isFinite(el.currentTime) ? Math.floor(el.currentTime) : undefined,
+    position: shared.primary ? (Number.isFinite(el.currentTime) ? Math.floor(el.currentTime) : undefined) : m.position,
     duration: Number.isFinite(el.duration) ? Math.floor(el.duration) : m.duration,
   });
 }
@@ -1055,7 +1062,17 @@ async function boot() {
   player.addEventListener("change", updatePlayer);
   player.addEventListener("change", reportToHost);
   player.addEventListener('change', () => shared.report());
-  shared.attach(player,state,()=>{updatePlayer();render();});
+  shared.attach(player,state,(structure=true)=>{updatePlayer();if(structure&&view!=='visualizer')render();});
+  analysePlayback(player.element,bins=>shared.publishSpectrum(bins));
+  setInterval(()=>{
+    if(view!=='visualizer')return;
+    const canvas=document.querySelector<HTMLCanvasElement>('.visualizer canvas');if(!canvas)return;
+    const bins=shared.spectrum,ctx=canvas.getContext('2d');if(!ctx)return;
+    canvas.width=Math.round(canvas.clientWidth*devicePixelRatio);canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(bins){ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--accent');const w=canvas.width/bins.length;bins.forEach((v,i)=>{const h=v/255*canvas.height;ctx.fillRect(i*w,canvas.height-h,Math.max(1,w-2),h);});}
+    const hint=canvas.nextElementSibling as HTMLElement;hint.hidden=!!bins;
+  },80);
   host?.onMediaCommand((c) => {
     const go = { toggle: () => player.toggle(), play: () => player.play(), pause: () => player.pause(), next: () => player.next(), prev: () => player.previous() }[c];
     void Promise.resolve(go?.()).catch((e) => notify((e as Error).message, true));
