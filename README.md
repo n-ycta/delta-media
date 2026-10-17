@@ -45,7 +45,9 @@ Library metadata and files belong to the current browser/WebView origin. Storage
 | Local | Library | Editable / filename / decoder duration | Browser codecs | User HTTPS artwork | User text/LRC | Not implemented | Export original |
 | Direct / radio | Saved links | Editable / decoder duration | Direct HTTPS, native HLS only if browser supports it | User HTTPS artwork | User text/LRC | Not implemented | Not implemented |
 | RSS / Atom | Imported episodes | Feed title/author/enclosure | Direct enclosures | Episode HTTPS artwork | User text/LRC | Not implemented | Not implemented |
-| YouTube | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| YouTube provider | Data API key or available public search service | Provider / oEmbed | Official embed, subject to availability and embed restrictions | Provider | Not implemented | Official player only | Not implemented |
+| SoundCloud provider | Requires configured access token | Provider / oEmbed | Official embed, subject to track access | Provider | Not implemented | Not implemented | Not implemented |
+| Spotify provider | Requires client credentials | Provider / oEmbed | Official embed, subject to account and preview restrictions | Provider | Not implemented | Not implemented | Not implemented |
 | Nostr / Blossom | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | VK / RuTube / Twitch | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 
@@ -60,6 +62,8 @@ The UI shows the same operation-level statuses. No unavailable integration retur
 - `playlists.ts` / `portable.ts`: link and metadata interchange.
 - `main.ts`: UI orchestration, no access to Delta owner credentials.
 
-The inspected Host Bridge 1.0 has a 64 KiB JSON request bound. Its current Plugin UI SDK is a source/origin-pinned, grant-limited message broker, not an app installer or a large-file transport. Native hosts reject arbitrary unverified plugin frames. The generic host now has a separately verified portable static app package format, per-app origins and an empty-grant SDK channel; this client uses `connectPlugin` for launch context and receives no root transport or credentials. Native media-decoder acceptance, streaming file handles, platform background/audio-session adapters and compatible Delta replication still require completion before synchronized native libraries can be claimed. Android must not depend on desktop Node.js process installation.
+The Host Bridge has a 64 KiB JSON request bound. Local binary files stay in IndexedDB and never cross JSON IPC. Media library uploads are batched; extremely large individual metadata items, queues and playlists still need additional transport work. Binary files are not replicated between devices.
 
-Collection mounts, full-text remote search, authenticated integrations and synchronized multi-device libraries are not part of this build. They must be implemented behind real adapter contracts rather than UI-only placeholders.
+The UI package is checksum-verified and runs in an isolated per-plugin origin. The host broker exposes an exact Media capability allowlist under the current caller's permissions, without sharing credentials or a general-purpose privileged transport. The process plugin registers explicit API/MCP schemas. Shared panel surfaces coordinate one audio owner; an MCP command targets an active playback device and is not proof that a restricted external embed started playing.
+
+Native decoder, background audio and codec acceptance still require platform testing. Android connects to the Delta service API and does not install desktop Node.js provider processes. Collection mounts, Nostr/Blossom protocols, audio effects and unrestricted commercial-service playback are not implemented.

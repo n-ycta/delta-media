@@ -1,4 +1,4 @@
-## 0.3.2
+## 0.3.3
 
 - Media remains the only media UI plugin. YouTube, SoundCloud and Spotify connect as headless provider plugins. Unified search and provider selection live inside Media.
 - Process plugin API: providers, search, resolve, library, playlists, queue, settings, statistics and playback-device commands, discoverable through MCP with explicit input schemas.
@@ -12,3 +12,5 @@ Limitations: browser autoplay and third-party embed/account restrictions still a
 Dedicated panels no longer duplicate the player footer. An audio spectrum surface uses actual decoded audio capture when the browser permits it; no synthetic animation substitutes for audio data.
 
 Provider page links can be added directly in the common import dialog. Large libraries sync in bounded batches.
+
+Official provider progress and duration now drive the common timeline and MCP session reports. Seeking uses the provider API. YouTube/SoundCloud volume controls are forwarded; Spotify has no public iframe volume API, so its misleading shared volume slider is disabled. Provider restrictions can prevent playback even when link resolution succeeds.
