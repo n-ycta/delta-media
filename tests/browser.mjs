@@ -179,7 +179,7 @@ try {
       .locator(".status")
       .filter({ hasText: "Not implemented" })
       .count(),
-    6,
+    5,
   );
   await page.locator("[data-action=theme]").click();
   assert.equal(
