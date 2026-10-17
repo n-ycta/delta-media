@@ -27,7 +27,10 @@ export class Player extends EventTarget {
     if (embedFrame)
       this.embed = new EmbedController(
         embedFrame,
-        () => this.change(),
+        () => {
+          if(this.current?.embed && this.embed){this.current.position=this.embed.position;if(this.embed.duration>0)this.current.duration=this.embed.duration;}
+          this.change();
+        },
         () =>
           void this.next(true).catch((e) =>
             this.dispatchEvent(new CustomEvent("failure", { detail: e.message })),
@@ -133,8 +136,8 @@ export class Player extends EventTarget {
         previoustrack: (): void => {
           void this.previous().catch(() => {});
         },
-        seekbackward: () => this.seek(element.currentTime - 15),
-        seekforward: () => this.seek(element.currentTime + 15),
+        seekbackward: () => this.seek(this.position - 15),
+        seekforward: () => this.seek(this.position + 15),
       }))
         try {
           navigator.mediaSession.setActionHandler(
@@ -204,6 +207,9 @@ export class Player extends EventTarget {
     this.change();
     if (autoplay) await this.play();
   }
+  get position():number { return this.delegate ? this.current?.position || 0 : this.current?.embed ? this.embed?.position || 0 : this.element.currentTime || 0; }
+  get duration():number { return this.delegate ? this.current?.duration || 0 : this.current?.embed ? this.embed?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
+  volume(value:number){if(this.delegate){void this.delegate('volume',[value]);return;}this.element.volume=value;this.embed?.volume(value);}
   /** True while audio/video or a provider player is playing. */
   get playing(): boolean {
     if(this.delegate)return this.remotePlaying;
@@ -242,6 +248,7 @@ export class Player extends EventTarget {
   seek(time: number) {
     if(this.delegate){void this.delegate('seek',[time]);return;}
     if (!Number.isFinite(time)) return;
+    if(this.current?.embed && this.embed){this.embed.seek(time);return;}
     const max = Number.isFinite(this.element.duration)
       ? this.element.duration
       : Infinity;

@@ -103,7 +103,7 @@ async function synchronize() {
     let batches:typeof state.media[]=[];
     if(snapshot){let batch:typeof state.media=[];let bytes=0;for(const item of state.media){const size=JSON.stringify(item).length;if(bytes+size>40000&&batch.length){batches.push(batch);batch=[];bytes=0;}batch.push(item);bytes+=size;}if(batch.length)batches.push(batch);}
     for(const batch of batches.slice(0,-1))await host.call('media.sync',{deviceId,library:batch});
-    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.element.currentTime},...(snapshot?{library:batches.at(-1)||[],playlists:state.playlists,queue:state.queue}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[]};
+    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.position},...(snapshot?{library:batches.at(-1)||[],playlists:state.playlists,queue:state.queue}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[]};
     if(!libraryDirty){state.media=result.library;state.playlists=result.playlists;state.queue=result.queue;preferences={...preferences,...result.settings};applyPreferences();shared.saved(state);}
     acknowledgements=[];
     for(const c of result.commands){try{if(c.command==='play'){if(c.args.item)await receiveMedia(true,c.args.item);else if(c.args.id){const index=state.queue.indexOf(c.args.id);if(index>=0)await player.load(index);}else await player.play();}else if(c.command==='pause')player.pause();else if(c.command==='next')await player.next();else if(c.command==='previous')await player.previous();else if(c.command==='seek')player.seek(c.args.position);else if(c.command==='queue'){state.queue=c.args.items;await persist();}acknowledgements.push(c.id);}catch(e){acknowledgements.push(c.id);notify(t('Не удалось выполнить команду воспроизведения.','Playback command failed.'),true);}}
@@ -247,7 +247,7 @@ function shell() {
     .querySelector<HTMLInputElement>("#volume")!
     .addEventListener("input", (e) => {
       state.volume = Number((e.target as HTMLInputElement).value);
-      player.element.volume = state.volume;
+      player.volume(state.volume);
       run(persist);
     });
   document
@@ -483,13 +483,14 @@ function updatePlayer() {
   document.querySelector("#toggle")!.innerHTML = icon(
     player.playing ? "pause" : "play",
   );
-  document.querySelector("#elapsed")!.textContent = time(shared.primary ? el.currentTime : m?.position || 0);
+  document.querySelector("#elapsed")!.textContent = time(player.position);
   document.querySelector("#duration")!.textContent =
-    m?.kind === "radio" || m?.kind === "live" ? "LIVE" : time(el.duration || 0);
+    m?.kind === "radio" || m?.kind === "live" ? "LIVE" : time(player.duration);
+  document.querySelector<HTMLInputElement>("#volume")!.disabled = !!m?.embed && m.source === "spotify";
   const range = document.querySelector<HTMLInputElement>("#seek")!;
-  range.disabled = !Number.isFinite(el.duration) || el.duration === 0;
-  range.max = String(Number.isFinite(el.duration) ? el.duration : 100);
-  range.value = String(el.currentTime || 0);
+  range.disabled = player.duration === 0;
+  range.max = String(player.duration || 100);
+  range.value = String(player.position);
   document
     .querySelector("#shuffle")!
     .classList.toggle("selected", state.shuffle);
@@ -1019,8 +1020,8 @@ function reportToHost() {
   lastReportAt = now;
   host.reportMedia({
     ...state_,
-    position: shared.primary ? (Number.isFinite(el.currentTime) ? Math.floor(el.currentTime) : undefined) : m.position,
-    duration: Number.isFinite(el.duration) ? Math.floor(el.duration) : m.duration,
+    position: shared.primary ? (Math.floor(player.position)) : m.position,
+    duration: player.duration ? Math.floor(player.duration) : m.duration,
   });
 }
 /** media.play / media.enqueue from source apps (YouTube, SoundCloud, Spotify…). */
@@ -1100,7 +1101,7 @@ async function boot() {
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable]') || e.ctrlKey || e.metaKey || e.altKey) return;
     if(e.code==='Space'){e.preventDefault();void player.toggle().catch(()=>{});}
-    if(e.code==='ArrowRight'||e.code==='ArrowLeft'){e.preventDefault();player.seek(Math.max(0,player.element.currentTime+(e.code==='ArrowRight'?1:-1)*preferences.seekStep));}
+    if(e.code==='ArrowRight'||e.code==='ArrowLeft'){e.preventDefault();player.seek(Math.max(0,player.position+(e.code==='ArrowRight'?1:-1)*preferences.seekStep));}
   });
   render(); updatePlayer();
   void synchronize(); setInterval(() => void synchronize(), 2000);
