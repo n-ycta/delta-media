@@ -100,7 +100,10 @@ async function synchronize() {
   if(!host||syncBusy||!shared.primary)return;syncBusy=true;
   try {
     const snapshot=libraryDirty;libraryDirty=false;
-    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.element.currentTime},...(snapshot?{library:state.media,playlists:state.playlists,queue:state.queue}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[]};
+    let batches:typeof state.media[]=[];
+    if(snapshot){let batch:typeof state.media=[];let bytes=0;for(const item of state.media){const size=JSON.stringify(item).length;if(bytes+size>40000&&batch.length){batches.push(batch);batch=[];bytes=0;}batch.push(item);bytes+=size;}if(batch.length)batches.push(batch);}
+    for(const batch of batches.slice(0,-1))await host.call('media.sync',{deviceId,library:batch});
+    const result=await host.call('media.sync',{deviceId,name:navigator.userAgent.includes('Android')?'Android':'Media',ack:acknowledgements,report:{playing:player.playing,title:player.current?.title,position:player.element.currentTime},...(snapshot?{library:batches.at(-1)||[],playlists:state.playlists,queue:state.queue}:{})}) as {commands:{id:string;command:string;args:Record<string,any>}[];settings:typeof preferences;library:typeof state.media;playlists:typeof state.playlists;queue:string[]};
     if(!libraryDirty){state.media=result.library;state.playlists=result.playlists;state.queue=result.queue;preferences={...preferences,...result.settings};applyPreferences();shared.saved(state);}
     acknowledgements=[];
     for(const c of result.commands){try{if(c.command==='play'){if(c.args.item)await receiveMedia(true,c.args.item);else if(c.args.id){const index=state.queue.indexOf(c.args.id);if(index>=0)await player.load(index);}else await player.play();}else if(c.command==='pause')player.pause();else if(c.command==='next')await player.next();else if(c.command==='previous')await player.previous();else if(c.command==='seek')player.seek(c.args.position);else if(c.command==='queue'){state.queue=c.args.items;await persist();}acknowledgements.push(c.id);}catch(e){acknowledgements.push(c.id);notify(t('Не удалось выполнить команду воспроизведения.','Playback command failed.'),true);}}
@@ -532,14 +535,13 @@ function importDialog() {
           notify(t("Загрузка ленты…", "Loading feed…"));
           await addMedia(await fetchFeed(u));
         } else {
-          if (
-            /(^|\.)(youtube\.com|youtu\.be|twitch\.tv)$/.test(
-              new URL(u).hostname,
-            )
-          )
-            throw Error(
-              "This service adapter is not implemented. Use a direct playable media URL.",
-            );
+          const hostName=new URL(u).hostname;
+          if(/(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|soundcloud\.com|spotify\.com)$/.test(hostName)){
+            const item=host ? await host.call('media.resolve',{url:u}) : {url:u,title:String(data.get('title'))||hostName,kind:kind==='video'?'video':'audio'};
+            await addMedia(intentItems(item));
+            document.querySelector<HTMLDialogElement>('#dialog')!.close();return;
+          }
+          if(/(^|\.)twitch\.tv$/.test(hostName))throw Error(t('Этот источник пока не подключён.','This provider is not connected yet.'));
           const m = newMedia(
             "direct",
             u,

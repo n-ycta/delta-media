@@ -224,6 +224,15 @@ try {
   await page.getByRole("button", { name: "Медиатека", exact: false }).waitFor();
   results.push("Cold offline restart loads the cached application shell");
   await context.setOffline(false);
+  const linkContext=await browser.newContext();const linkPage=await linkContext.newPage();
+  await linkPage.goto(origin);await linkPage.locator('header [data-action=import]').click();
+  await linkPage.locator('#add-link input[name=url]').fill('https://youtu.be/jfKfPfyJRdk');
+  await linkPage.locator('#add-link input[name=title]').fill('Provider link');
+  await linkPage.locator('#add-link button[type=submit]').click();
+  await linkPage.locator('.art[data-action=play]').first().click();
+  await linkPage.waitForFunction(()=>document.querySelector('#embed')?.src.includes('youtube-nocookie.com/embed/jfKfPfyJRdk'));
+  assert.equal(await linkPage.locator('#embed').isVisible(),true);await linkContext.close();
+  results.push('Common import accepts a provider page link and opens its official embed (not proof of external audio access)');
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(
