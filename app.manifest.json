@@ -1,7 +1,7 @@
 {
   "id": "dev.delta.media",
   "name": "Delta Media",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "entry": "index.html",
   "runtime": {
     "execution": "web",
@@ -26,6 +26,21 @@
   "ui": {
     "version": 1,
     "surfaces": [
+      {
+        "id": "player",
+        "name": {
+          "en": "Player",
+          "ru": "Плеер"
+        },
+        "icon": "play-circle",
+        "kind": "panel",
+        "minWidth": 280,
+        "minHeight": 240,
+        "instance": "shared",
+        "requires": [
+          "dev.delta.media>=0.3.0"
+        ]
+      },
       {
         "id": "library",
         "name": {

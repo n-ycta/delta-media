@@ -1,6 +1,6 @@
 {
   "name": "delta-media",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build && node scripts/offline.mjs",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs",
-    "package:app": "npm run build && node scripts/package-app.mjs"
+    "package:app": "npm run build && node scripts/package-app.mjs",
+    "package:plugin": "npm run package:app && node scripts/package-plugin.mjs",
+    "test:api": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

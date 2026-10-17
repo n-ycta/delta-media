@@ -169,18 +169,25 @@ try {
   );
   await page.locator("[data-action=close]").click();
   results.push("390px layout and import dialog: no horizontal overflow");
+  const secondary=await context.newPage();
+  await secondary.goto(origin+'/?surface=queue&chrome=0');
+  await secondary.locator('#toggle').waitFor();
+  await page.locator('#toggle').click();
+  await secondary.waitForTimeout(600);
+  assert.equal(await secondary.locator('#media').evaluate(v=>v.paused),true,'secondary panel owns no decoder');
+  await secondary.locator('#toggle').click();
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('#media').evaluate(v=>v.paused),true,'secondary pauses primary');
+  await secondary.close();
+  results.push('Simultaneous panels: one decoder owner, shared pause control');
+
   await page.locator("[data-action=view][data-view=sources]").click();
   await page.screenshot({
     path: path.join(output, "delta-media-sources-mobile.png"),
     fullPage: false,
   });
-  assert.equal(
-    await page
-      .locator(".status")
-      .filter({ hasText: "Not implemented" })
-      .count(),
-    5,
-  );
+  assert.equal(await page.locator('.status').filter({hasText:'Not implemented'}).count(),0);
+  assert.match(await page.locator('#provider-connections').innerText(),/Connect Delta/);
   await page.locator("[data-action=theme]").click();
   assert.equal(
     await page.evaluate(() => document.documentElement.dataset.theme),

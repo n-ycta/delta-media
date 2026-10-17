@@ -1,22 +1,10 @@
-## 0.2.0
+## 0.3.0
 
-- Host integration: follows the global Delta theme/skin (`applyThemeTokens`, `onPresentation`), reports playback state to the host mini-player (`reportMedia`) and obeys host media commands (`onMediaCommand`).
-- Receives `media.play` / `media.enqueue` intents from other apps (e.g. Delta YouTube, SoundCloud, Spotify provider apps).
-- YouTube, SoundCloud and Spotify links play through the providers' official embedded players (Spotify: 30 s previews unless signed in to Spotify in the same WebView).
-- Bundled Manrope, Golos Text, Literata, Onest and JetBrains Mono fonts for the four Delta skins.
+- Media remains the only media UI plugin. YouTube, SoundCloud and Spotify connect as headless provider plugins. Unified search and provider selection live inside Media.
+- Process plugin API: providers, search, resolve, library, playlists, queue, settings, statistics and playback-device commands, discoverable through MCP with explicit input schemas.
+- Independent player/library/playlist/statistics panels coordinate one audio owner across the host; local file playback survives UI navigation.
+- Fixed startup play/pause races, repeated Links tabs, progress controls, icon-only import and player contrast. Added resume/autoplay/speed/seek-step/initial-volume/display preferences.
 
-Experimental portable Delta Media client — not full service parity.
+Install `delta-media.tar.gz` on a Delta node for the API and `delta-media.delta-app` in the host for the interface. Core >=0.4.3 and the current host UI are required.
 
-- Real local audio/video, direct HTTPS/radio and RSS/Atom playback where the host decoder and source permissions allow it.
-- Persistent local library, queue, history, progress, editable metadata/LRC, audiobook chapters/bookmarks and playlist interchange.
-- Artist/album collections and dynamic smart playlists with validated portable rules.
-- Delta-style Phosphor interface, light/dark themes, adaptive desktop/mobile layout and Settings-only language selection.
-- Fifteen cliamp radio presets, station filtering, published track catalog search and actual shared-player playback.
-- Declarative shared Media surfaces for the workbench, hideable tabs and styled form controls.
-- Verified portable delta-app-v1 package; isolated SDK context, no Delta owner credential access.
-
-Browser tests exercise actual WAV/WebM playback, restore, RSS, playlists and cold offline startup. Native-host package install/UI startup has been tested separately; it is not proof of native codec or background playback support. Browser/WebView storage is device/origin-local and subject to quota/eviction.
-
-YouTube, Nostr/Blossom, VK/RuTube/Twitch, multi-device Delta synchronization, mounted external collections and native background playback are not implemented. No DRM, authentication or CORS bypass is provided. Verify SHA256SUMS before importing the .delta-app package.
-
-Composable surfaces require a host with UI 0.2.0 or later. V1 uses one shared Media runtime; simultaneous independent Media panes are not implemented. Spotify/SoundCloud account adapters, Radio Browser discovery and an equalizer are not included. See docs/RADIO.md for the public catalog contract and limitations.
+Limitations: browser autoplay and third-party embed/account restrictions still apply. The Spotify embed is not a full unrestricted playback API. Public YouTube search services may be unavailable. Native codec/background playback and audio effects are not claimed.

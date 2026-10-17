@@ -1,5 +1,5 @@
 export const mediaSurfaces = [
-  "home",
+  "home", "player",
   "library",
   "audio",
   "artists",

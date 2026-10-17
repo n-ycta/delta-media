@@ -9,7 +9,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '24', cache: npm}
       - run: npm ci --ignore-scripts
-      - run: npm test && npm run package:app
+      - run: npm test && npm run test:api && npm run package:plugin
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - uses: actions/upload-artifact@v4

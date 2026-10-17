@@ -10,7 +10,11 @@ export class Player extends EventTarget {
   private historyId = "";
   private metadataReady = false;
   private restorePosition = 0;
+  delegate?: (command:string,args:unknown[])=>Promise<void>;
+  remotePlaying = false;
   current?: Media;
+  resume = true;
+  autoplayNext = true;
   readonly embed?: EmbedController;
   constructor(
     readonly element: HTMLVideoElement,
@@ -121,7 +125,7 @@ export class Player extends EventTarget {
         play: (): void => {
           void this.play().catch(() => {});
         },
-        pause: (): void => element.pause(),
+        pause: (): void => this.pause(),
         nexttrack: (): void => {
           void this.next().catch(() => {});
         },
@@ -147,6 +151,7 @@ export class Player extends EventTarget {
     this.dispatchEvent(new Event("change"));
   }
   async load(index: number, autoplay = true): Promise<void> {
+    if (this.delegate) { if (autoplay) await this.delegate('load',[index,autoplay]); return; }
     const id = this.state.queue[index],
       m = this.state.media.find((m) => m.id === id);
     if (!m)
@@ -154,7 +159,7 @@ export class Player extends EventTarget {
     const generation = ++this.generation;
     this.element.pause();
     this.metadataReady = false;
-    this.restorePosition = m.position;
+    this.restorePosition = this.resume ? m.position : 0;
     this.current = m;
     this.state.queueIndex = index;
     this.session = false;
@@ -194,18 +199,23 @@ export class Player extends EventTarget {
         album: m.album || "",
       });
     await this.save();
+    if (generation !== this.generation) return;
     this.change();
     if (autoplay) await this.play();
   }
   /** True while audio/video or a provider player is playing. */
   get playing(): boolean {
+    if(this.delegate)return this.remotePlaying;
     return this.current?.embed && this.embed ? this.embed.playing : !this.element.paused;
   }
   pause() {
+    if(this.delegate){void this.delegate('pause',[]);return;}
+    this.generation++;
     if (this.current?.embed && this.embed) this.embed.pause();
     else this.element.pause();
   }
   async play(): Promise<void> {
+    if(this.delegate)return this.delegate('play',[]);
     if (this.current?.embed && this.embed) {
       if (!this.embed.provider) {
         const e = embedUrl(this.current.embed);
@@ -213,9 +223,12 @@ export class Player extends EventTarget {
       } else this.embed.play();
       return;
     }
+    const generation = this.generation;
     try {
       await this.element.play();
     } catch (e) {
+      // A newer load/pause owns playback now; a cancelled older play is not a user error.
+      if (generation !== this.generation && (e as DOMException).name === 'AbortError') return;
       if ((e as DOMException).name === "NotAllowedError")
         throw Error("Press Play to allow playback on this device.");
       throw e;
@@ -226,6 +239,7 @@ export class Player extends EventTarget {
     else this.pause();
   }
   seek(time: number) {
+    if(this.delegate){void this.delegate('seek',[time]);return;}
     if (!Number.isFinite(time)) return;
     const max = Number.isFinite(this.element.duration)
       ? this.element.duration
@@ -237,9 +251,11 @@ export class Player extends EventTarget {
     }
   }
   async next(ended = false): Promise<void> {
+    if(this.delegate)return this.delegate('next',[ended]);
+    if (ended && !this.autoplayNext) { this.pause(); this.change(); return; }
     const next = nextIndex(this.state, ended);
     if (next === null) {
-      this.element.pause();
+      this.pause();
       this.change();
       return;
     }
@@ -249,6 +265,7 @@ export class Player extends EventTarget {
     await this.load(next);
   }
   async previous(): Promise<void> {
+    if(this.delegate)return this.delegate('previous',[]);
     if (this.element.currentTime > 3) {
       this.seek(0);
       return;
