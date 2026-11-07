@@ -1,6 +1,7 @@
 import { nextIndex, uid, type State, type Media } from "./model";
 import { Storage } from "./storage";
 import { EmbedController, embedUrl } from "./embeds";
+import type { PlaybackStatus } from './player-view';
 export class Player extends EventTarget {
   private objectUrl = "";
   private session = false;
@@ -10,6 +11,7 @@ export class Player extends EventTarget {
   private historyId = "";
   private metadataReady = false;
   private restorePosition = 0;
+  private lastError = '';
   delegate?: (command:string,args:unknown[])=>Promise<void>;
   remotePlaying = false;
   current?: Media;
@@ -35,9 +37,10 @@ export class Player extends EventTarget {
           void this.next(true).catch((e) =>
             this.dispatchEvent(new CustomEvent("failure", { detail: e.message })),
           ),
-        (message) => this.dispatchEvent(new CustomEvent("failure",{detail:message})),
+        (message) => {this.lastError=message;this.change();this.dispatchEvent(new CustomEvent("failure",{detail:message}));},
       );
     element.volume = state.volume;
+    for(const event of ['loadstart','waiting','canplay','stalled','emptied'])element.addEventListener(event,()=>this.change());
     element.addEventListener("loadedmetadata", () => {
       const m = this.current;
       if (!m) return;
@@ -116,6 +119,7 @@ export class Player extends EventTarget {
       );
     });
     element.addEventListener("error", () => {
+      this.lastError = 'Playback failed: unavailable link, network restriction, unsupported codec or protected media.';
       this.dispatchEvent(
         new CustomEvent("failure", {
           detail:
@@ -160,6 +164,11 @@ export class Player extends EventTarget {
   }
   /** Immediate playback is independent of the user-managed queue. */
   async playId(id: string, autoplay = true): Promise<void> {
+    this.lastError='';
+    try { await this.startId(id,autoplay); }
+    catch(error) {this.lastError=error instanceof Error?error.message:String(error);this.change();throw error;}
+  }
+  private async startId(id: string, autoplay = true): Promise<void> {
     if (this.delegate) { await this.delegate('playId',[id,autoplay]); return; }
     const m = this.state.media.find((m) => m.id === id);
     if (!m)
@@ -218,6 +227,16 @@ export class Player extends EventTarget {
     if (autoplay) await this.play();
   }
   private get usingEmbed(): boolean { return !!this.current?.embed && !!this.embed && !this.element.getAttribute('src'); }
+  get errorMessage(): string { return this.lastError || this.embed?.error || ''; }
+  get status(): PlaybackStatus {
+    if(!this.current)return 'idle';
+    if(this.delegate)return this.remotePlaying?'playing':'paused';
+    if(this.errorMessage||this.element.error)return 'error';
+    if(this.usingEmbed){if(this.embed?.provider&&!this.embed.ready)return 'loading';return this.playing?'playing':'paused';}
+    if(this.element.networkState===HTMLMediaElement.NETWORK_LOADING&&this.element.readyState<2)return 'loading';
+    if(!this.element.paused&&this.element.readyState<3)return 'buffering';
+    return this.playing?'playing':'paused';
+  }
   get position():number { return this.delegate ? this.current?.position || 0 : this.usingEmbed ? (this.embed?.hasPosition ? this.embed.position : this.current?.position || 0) : this.element.currentTime || 0; }
   get duration():number { return this.delegate ? this.current?.duration || 0 : this.usingEmbed ? this.embed?.duration || this.current?.duration || 0 : Number.isFinite(this.element.duration) ? this.element.duration : 0; }
   volume(value:number){if(this.delegate){void this.delegate('volume',[value]);return;}this.element.volume=value;this.embed?.volume(value);}
@@ -238,6 +257,7 @@ export class Player extends EventTarget {
     this.element.pause();
     this.embed?.close();
     this.current = undefined;
+    this.lastError='';
     this.state.currentId = undefined;
     this.element.removeAttribute('src'); this.element.load(); this.element.hidden = true;
     if (this.objectUrl) { URL.revokeObjectURL(this.objectUrl); this.objectUrl = ''; }
@@ -246,6 +266,7 @@ export class Player extends EventTarget {
   }
   async play(): Promise<void> {
     if(this.delegate)return this.delegate('play',[]);
+    this.lastError='';
     if (this.usingEmbed) {
       if (!this.embed!.provider) {
         const e = embedUrl(this.current!.embed!);
@@ -259,6 +280,8 @@ export class Player extends EventTarget {
     } catch (e) {
       // A newer load/pause owns playback now; a cancelled older play is not a user error.
       if (generation !== this.generation && (e as DOMException).name === 'AbortError') return;
+      this.lastError=(e as DOMException).name==='NotAllowedError'?'Press Play to allow playback on this device.':e instanceof Error?e.message:String(e);
+      this.change();
       if ((e as DOMException).name === "NotAllowedError")
         throw Error("Press Play to allow playback on this device.");
       throw e;

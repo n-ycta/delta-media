@@ -260,7 +260,7 @@ try {
   await linkPage.locator('#add-link button[type=submit]').click();
   await linkPage.locator('.art[data-action=play]').first().click();
   await linkPage.waitForFunction(()=>document.querySelector('#embed')?.src.includes('youtube-nocookie.com/embed/jfKfPfyJRdk'));
-  assert.equal(await linkPage.locator('#embed').isVisible(),true);await linkContext.close();
+  assert.equal(await linkPage.locator('#embed').isVisible(),false,'music keeps the large video surface folded');await linkPage.locator('#video-show').click();assert.equal(await linkPage.locator('#embed').isVisible(),true);await linkContext.close();
   results.push('Common import accepts a provider page link and opens its official embed (not proof of external audio access)');
   const queueContext = await browser.newContext();
   const queuePage = await queueContext.newPage();

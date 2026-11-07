@@ -61,6 +61,8 @@ export class EmbedController {
   position = 0;
   hasPosition = false;
   duration = 0;
+  ready = false;
+  error = '';
   constructor(
     readonly frame: HTMLIFrameElement,
     readonly onChange: () => void,
@@ -78,12 +80,13 @@ export class EmbedController {
         }
       }
       if (!d || typeof d !== "object") return;
-      if(this.provider==='youtube'&&d.event==='onReady'){this.handshake();this.play();}
-      if(this.provider==='youtube'&&d.event==='onError'){this.set(false);onError('YouTube could not play this video. Open it on YouTube or choose another item.');}
-      if(this.provider==='spotify'&&d.type==='ready'){this.frame.contentWindow?.postMessage({command:'load_complete_ack'},EMBED_ORIGINS.spotify);this.play();}
-      if(this.provider==='spotify'&&d.type==='error'){this.set(false);onError('Spotify could not play this item. Check access in the embedded player.');}
+      if(this.provider==='youtube'&&d.event==='onReady'){this.ready=true;this.onChange();this.handshake();this.play();}
+      if(this.provider==='youtube'&&d.event==='onError'){this.error='YouTube could not play this video. Open it on YouTube or choose another item.';this.ready=true;this.set(false);this.onChange();onError(this.error);}
+      if(this.provider==='spotify'&&d.type==='ready'){this.ready=true;this.onChange();this.frame.contentWindow?.postMessage({command:'load_complete_ack'},EMBED_ORIGINS.spotify);this.play();}
+      if(this.provider==='spotify'&&d.type==='error'){this.error='Spotify could not play this item. Check access in the embedded player.';this.ready=true;this.set(false);this.onChange();onError(this.error);}
 
       if(this.provider==='youtube' && d.event==='infoDelivery' && d.info){
+        this.ready=true;
         if(Number.isFinite(d.info.currentTime)){this.position=d.info.currentTime;this.hasPosition=true;}
         if(Number.isFinite(d.info.duration))this.duration=d.info.duration;
         this.onChange();
@@ -104,6 +107,7 @@ export class EmbedController {
         }
       }
       if (this.provider === "soundcloud") {
+        if(!this.ready&&['ready','play','pause','playProgress'].includes(d.method)){this.ready=true;this.onChange();}
         if (d.method === "play") {this.set(true);this.post({method:"getDuration"});}
         if (d.method === "pause") this.set(false);
         if (d.method === "finish") {
@@ -112,6 +116,7 @@ export class EmbedController {
         }
       }
       if (this.provider === "spotify" && d.type === "playback_update" && d.payload) {
+        this.ready=true;
         if(Number.isFinite(d.payload.position)){this.position=d.payload.position/1000;this.hasPosition=true;}
         if(Number.isFinite(d.payload.duration))this.duration=d.payload.duration/1000;
         this.set(!d.payload.isPaused);this.onChange();
@@ -141,12 +146,14 @@ export class EmbedController {
     this.provider = provider;
     this.playing = false;
     this.position=0;this.duration=0;this.hasPosition=false;
+    this.ready=false;this.error='';
     this.frame.src = url;
     this.frame.hidden = false;
     this.onChange();
   }
   close() {
     this.provider = undefined;
+    this.ready=false;this.error='';
     this.playing = false;
     this.frame.hidden = true;
     this.frame.removeAttribute("src");

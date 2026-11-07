@@ -24,6 +24,7 @@ import { icon } from "./icons";
 import "./style.css";
 import { Storage } from "./storage";
 import { Player } from "./player";
+import { playerFooter, playerSurface, statusText } from "./player-view";
 import { adapters, parseFeed, fetchFeed } from "./adapters";
 import {
   deduplicate,
@@ -72,7 +73,7 @@ let videoMode = localStorage.getItem('delta-media.video-mode') || 'normal';
 let videoHeight = Math.max(160,Math.min(640,Number(localStorage.getItem('delta-media.video-height'))||320));
 function videoPresentation() {
   const stage=document.querySelector<HTMLElement>('#stage');if(!stage)return;
-  stage.dataset.mode=videoMode;stage.style.setProperty('--video-height',videoHeight+'px');
+  stage.dataset.mode=videoMode;if(player?.current)stage.dataset.category=mediaCategory(player.current);else delete stage.dataset.category;stage.style.setProperty('--video-height',videoHeight+'px');
   const show=stage.querySelector<HTMLButtonElement>('[data-action="video-restore"]');if(show)show.hidden=videoMode!=='hidden';
   stage.querySelectorAll<HTMLElement>('[data-video-controls]').forEach(el=>el.hidden=videoMode==='hidden');
   localStorage.setItem('delta-media.video-mode',videoMode);localStorage.setItem('delta-media.video-height',String(videoHeight));
@@ -254,12 +255,13 @@ let state: State,
   saveError = false;
 function notify(message: string, error = false) {
   const box = document.querySelector<HTMLElement>("#notice")!;
-  box.textContent = message;
+  box.dataset.message=message;
+  box.innerHTML=`<span>${esc(message)}</span><button data-action="dismiss-notice" aria-label="${t('Закрыть уведомление','Dismiss notification')}" title="${t('Закрыть уведомление','Dismiss notification')}">${icon('close')}</button>`;
   box.className = error ? "notice error" : "notice";
   box.hidden = false;
   if (!error)
     setTimeout(() => {
-      if (box.textContent === message) box.hidden = true;
+      if (box.dataset.message === message) box.hidden = true;
     }, 5000);
 }
 function run(fn: () => Promise<unknown> | unknown) {
@@ -310,7 +312,7 @@ function labels(): Record<string, string> {
   };
 }
 function shell() {
-  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><div class="video-tools"><button data-action="video-restore" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><span data-video-controls><button data-action="video-compact" aria-label="${t('Уменьшить видео','Compact video')}" title="${t('Уменьшить видео','Compact video')}">${icon('minus')}</button><button data-action="video-normal" aria-label="${t('Развернуть видео','Expand video')}" title="${t('Развернуть видео','Expand video')}">${icon('expand')}</button><button data-action="video-hide" aria-label="${t('Скрыть видео','Hide video')}" title="${t('Скрыть видео','Hide video')}">${icon('close')}</button></span></div><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="video-resize" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="${t('Высота видео','Video height')}"></div></div><main id="view"></main></section><footer><div class="now"><div class="mini-art">${icon("audio")}</div><div><strong id="now-title">${t("Пауза", "Paused")}</strong><small id="now-artist">Delta Media</small></div></div><div class="transport"><div class="transport-buttons"><button data-action="video-show" id="video-show" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><button data-action="shuffle" id="shuffle" aria-label="${t("Перемешивание", "Shuffle")}">${icon("shuffle")}</button><button data-action="previous" aria-label="${t("Назад", "Previous")}">${icon("previous")}</button><button data-action="toggle" id="toggle" class="play" aria-label="${t("Воспроизведение / пауза", "Play / pause")}">${icon("play")}</button><button data-action="next" aria-label="${t("Далее", "Next")}">${icon("next")}</button><button data-action="repeat" id="repeat" aria-label="${t("Повтор", "Repeat")}">${icon("repeat")}</button></div><div class="timeline"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="${t("Позиция", "Position")}"><span id="duration">0:00</span></div></div><div class="volume"><span aria-hidden="true">${icon("volume")}</span><input id="volume" type="range" min="0" max="1" step="0.01" value="${state.volume}" aria-label="${t("Громкость", "Volume")}"><button data-action="queue" aria-label="${t("Очередь", "Queue")}">${icon("queue")}</button></div></footer><dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
+  app.innerHTML = `<aside><a class="brand" href="#home"><img src="./delta-logo.svg" alt="Delta"><span class="brand-text"><strong>Delta</strong><small>Media</small></span></a><nav id="nav"></nav></aside><section class="workspace"><header><div class="breadcrumbs">delta / <span id="breadcrumb">media</span></div><label class="search"><span>${icon("search")}</span><input id="search" type="search" placeholder="${t("Поиск в выбранных источниках", "Search selected sources")}" aria-label="${t("Поиск", "Search")}"></label><button data-action="theme" title="${t("Тема", "Theme")}" aria-label="Theme">${icon(theme === "dark" ? "sun" : "moon")}</button><button data-action="import" class="primary" title="${t("Импорт", "Import")}" aria-label="${t("Импорт", "Import")}">${icon("upload")}</button></header><div id="notice" class="notice" hidden role="status"></div><div id="stage"><div class="video-tools"><button data-action="video-restore" aria-label="${t('Показать видео','Show video')}" title="${t('Показать видео','Show video')}" hidden>${icon('video')}</button><span data-video-controls><button data-action="video-compact" aria-label="${t('Уменьшить видео','Compact video')}" title="${t('Уменьшить видео','Compact video')}">${icon('minus')}</button><button data-action="video-normal" aria-label="${t('Развернуть видео','Expand video')}" title="${t('Развернуть видео','Expand video')}">${icon('expand')}</button><button data-action="video-hide" aria-label="${t('Скрыть видео','Hide video')}" title="${t('Скрыть видео','Hide video')}">${icon('close')}</button></span></div><video id="media" playsinline preload="metadata" referrerpolicy="no-referrer" hidden></video><iframe id="embed" title="Player" hidden allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="video-resize" tabindex="0" role="separator" aria-orientation="horizontal" aria-label="${t('Высота видео','Video height')}"></div></div><main id="view"></main></section>${playerFooter(state,t)}<dialog id="dialog"></dialog><input id="files" type="file" multiple accept="audio/*,video/*,.json,.m3u,.m3u8,.pls,.xml,.rss,.atom" hidden>`;
   videoPresentation();
   const videoResize=document.querySelector<HTMLElement>('.video-resize')!;
   videoResize.addEventListener('pointerdown',e=>{const start=e.clientY,height=videoHeight;videoMode='normal';videoResize.setPointerCapture(e.pointerId);const move=(event:PointerEvent)=>{videoHeight=Math.max(160,Math.min(640,height+event.clientY-start));videoPresentation();};const stop=()=>{videoResize.removeEventListener('pointermove',move);videoResize.removeEventListener('pointerup',stop);videoResize.removeEventListener('pointercancel',stop);};videoResize.addEventListener('pointermove',move);videoResize.addEventListener('pointerup',stop);videoResize.addEventListener('pointercancel',stop);});
@@ -428,7 +430,7 @@ async function toggleQueue(m: Media) {
 }
 function row(m: Media, index: number) {
   const attrs = `data-id="${m.id}"`;
-  return `<article class="media-row${selectedMedia.has(m.id)?' is-selected':''}" ${attrs}>
+  return `<article class="media-row${selectedMedia.has(m.id)?' is-selected':''}${player.current?.id===m.id?' is-current':''}" ${attrs}>
     ${selectionMode?`<button class="track-action" data-action="select-item" ${attrs} aria-pressed="${selectedMedia.has(m.id)}" aria-label="${t('Выбрать запись','Select item')}">${icon(selectedMedia.has(m.id)?'check':'plus')}</button>`:''}
     <button class="art ${m.kind}" data-action="play" ${attrs} aria-label="${t('Воспроизвести','Play')} ${esc(m.title)}">${m.artwork?`<img alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.artwork)}">`:icons[m.kind as keyof typeof icons]||icon('audio')}</button>
     <button class="media-title" data-action="play" ${attrs}><strong>${esc(m.title)}</strong><span>${esc(m.artist||m.album||'—')}</span>${m.offlineJob?`<small role="status">${t('Офлайн-копия','Offline copy')} · ${offline?.progress.get(m.id)||0}%</small>`:m.position>0?`<small>${t('Продолжить с','Resume at')} ${time(m.position)}</small>`:''}</button>
@@ -547,8 +549,8 @@ function render() {
     return;
   }
   if (view === 'player') {
-    const m=player.current;
-    target.innerHTML=`<div class="player-surface"><div class="player-surface-art">${m?.artwork?`<img src="${esc(m.artwork)}" alt="">`:icon('audio')}</div><h1>${esc(m?.title||t('Выберите трек','Choose a track'))}</h1><p>${esc(m?.artist||'')}</p></div>`;
+    target.innerHTML=playerSurface(player.current,state,t);
+    updatePlayer();
     return;
   }
   if (view === 'search') {
@@ -656,38 +658,59 @@ function render() {
     render();
   });
 }
+let previousVolume = 1;
+let presentedTrack = '';
 function updatePlayer() {
-  const el = player.element,
-    m = player.current;
-  document.querySelector("#now-title")!.textContent =
-    m?.title || t("Пауза", "Paused");
-  document.querySelector("#now-artist")!.textContent =
-    m?.artist || m?.source || "Delta Media";
-  const toggle=document.querySelector<HTMLElement>('#toggle')!;
+  const el=player.element,m=player.current,status=player.status;
+  if(presentedTrack!==(m?.id||'')){presentedTrack=m?.id||'';if(m){videoMode=mediaCategory(m)==='music'?'hidden':'normal';videoPresentation();}if(view==='player')document.querySelector('#view')!.innerHTML=playerSurface(m,state,t);}
+  const footer=document.querySelector<HTMLElement>('.media-player')!;
+  footer.dataset.state=status;
+  footer.setAttribute('aria-busy',String(status==='loading'||status==='buffering'));
+  document.querySelector('#now-title')!.textContent=m?.title||t('Выберите трек','Choose a track');
+  document.querySelector('#now-artist')!.textContent=m?.artist||m?.source||t('Нажмите на запись в медиатеке','Choose an item in your library');
+  document.querySelector('#player-status')!.textContent=statusText(status,t);
+  const toggle=document.querySelector<HTMLButtonElement>('#toggle')!;
   const playing=String(player.playing);
   if(toggle.dataset.playing!==playing){toggle.dataset.playing=playing;toggle.innerHTML=icon(player.playing?'pause':'play');}
+  toggle.disabled=!m&&!state.queue.length;
+  toggle.setAttribute('aria-label',player.playing?t('Пауза','Pause'):t('Воспроизвести','Play'));
+  toggle.title=toggle.getAttribute('aria-label')!;
+  document.querySelector<HTMLButtonElement>('[data-action="previous"]')!.disabled=!m;
+  document.querySelector<HTMLButtonElement>('[data-action="next"]')!.disabled=!m||!state.queue.length;
   const art=document.querySelector<HTMLElement>('.mini-art')!;
   if(art.dataset.artwork!==(m?.artwork||'')){art.dataset.artwork=m?.artwork||'';art.innerHTML=m?.artwork?`<img alt="" referrerpolicy="no-referrer" src="${esc(m.artwork)}">`:icon('audio');}
-  document.querySelector("#elapsed")!.textContent = time(player.position);
-  document.querySelector("#duration")!.textContent =
-    m?.kind === "radio" || m?.kind === "live" ? "LIVE" : time(player.duration);
-  document.querySelector<HTMLInputElement>("#volume")!.disabled = !!m?.embed && m.source === "spotify";
-  const showVideo=document.querySelector<HTMLButtonElement>('#video-show');if(showVideo)showVideo.hidden=!(m?.embed||m?.kind==='video');
-  const range = document.querySelector<HTMLInputElement>("#seek")!;
-  range.disabled = player.duration === 0;
-  range.max = String(player.duration || 100);
-  if(document.activeElement!==range)range.value = String(player.position);
-  document
-    .querySelector("#shuffle")!
-    .classList.toggle("selected", state.shuffle);
-  document
-    .querySelector("#repeat")!
-    .classList.toggle("selected", state.repeat !== "off");
-  document.querySelector("#repeat")!.innerHTML =
-    icon("repeat") + (state.repeat === "one" ? "<small>1</small>" : "");
-  document
-    .querySelector("#repeat")!
-    .setAttribute("aria-label", "Repeat: " + state.repeat);
+  document.querySelector('#elapsed')!.textContent=time(player.position);
+  const live=m?.kind==='radio'||m?.kind==='live';
+  document.querySelector('#duration')!.textContent=live?'LIVE':player.duration?time(player.duration):'—:—';
+  const range=document.querySelector<HTMLInputElement>('#seek')!;
+  range.disabled=!m||player.duration===0||live;
+  range.max=String(player.duration||100);
+  if(document.activeElement!==range)range.value=String(player.position);
+  range.style.setProperty('--range-progress',`${player.duration?Math.min(100,player.position/player.duration*100):0}%`);
+  range.setAttribute('aria-valuetext',`${time(player.position)} / ${live?'LIVE':time(player.duration)}`);
+  const volume=document.querySelector<HTMLInputElement>('#volume')!;
+  const fixedVolume=!!m?.embed&&m.source==='spotify';
+  volume.disabled=fixedVolume;
+  if(document.activeElement!==volume)volume.value=String(state.volume);
+  volume.style.setProperty('--range-progress',`${state.volume*100}%`);
+  const mute=document.querySelector<HTMLButtonElement>('#mute')!;
+  mute.disabled=fixedVolume;mute.setAttribute('aria-pressed',String(state.volume===0));
+  mute.setAttribute('aria-label',state.volume===0?t('Включить звук','Unmute'):t('Выключить звук','Mute'));
+  mute.title=fixedVolume?t('Громкость регулируется в Spotify','Adjust volume in Spotify'):mute.getAttribute('aria-label')!;
+  mute.classList.toggle('is-muted',state.volume===0);
+  document.querySelector('#queue-count')!.textContent=String(state.queue.length);
+  const showVideo=document.querySelector<HTMLButtonElement>('#video-show')!;showVideo.hidden=!(m?.embed||m?.kind==='video');
+  const shuffle=document.querySelector<HTMLButtonElement>('#shuffle')!;
+  shuffle.classList.toggle('selected',state.shuffle);shuffle.setAttribute('aria-pressed',String(state.shuffle));shuffle.disabled=state.queue.length<2;
+  const repeat=document.querySelector<HTMLButtonElement>('#repeat')!;
+  repeat.classList.toggle('selected',state.repeat!=='off');repeat.setAttribute('aria-pressed',String(state.repeat!=='off'));
+  repeat.innerHTML=icon('repeat')+(state.repeat==='one'?'<small>1</small>':'');
+  repeat.setAttribute('aria-label',state.repeat==='off'?t('Повтор выключен','Repeat off'):state.repeat==='all'?t('Повторять список','Repeat all'):t('Повторять трек','Repeat one'));
+  repeat.title=repeat.getAttribute('aria-label')!;
+  const retry=document.querySelector<HTMLButtonElement>('#player-retry')!;retry.hidden=status!=='error';
+  document.querySelectorAll<HTMLElement>('.surface-playback-status').forEach(node=>node.textContent=statusText(status,t));
+  document.querySelectorAll<HTMLElement>('.surface-playback-error').forEach(node=>{node.hidden=status!=='error';node.textContent=t('Проверьте подключение и нажмите «Повторить воспроизведение». Можно выбрать другую запись.','Check your connection and retry playback, or choose another item.');});
+  document.querySelectorAll<HTMLElement>('.media-row[data-id]').forEach(row=>row.classList.toggle('is-current',row.dataset.id===m?.id));
   const lyrics = document.querySelector("#synced-lyrics");
   if (lyrics && m) {
     const lines = parseLrc(m.lyrics || "");
@@ -920,6 +943,7 @@ const actionHandlers: Record<
     collectionId = "";
     render();
   },
+  'dismiss-notice': () => {document.querySelector<HTMLElement>('#notice')!.hidden=true;},
   import: importDialog,
   close: () => document.querySelector<HTMLDialogElement>("#dialog")!.close(),
   "choose-files": () => {
@@ -949,6 +973,11 @@ const actionHandlers: Record<
     await player.playId(id);
     render();
   },
+  'player-open': () => {view='player';render();},
+  'player-back': () => {view='library';render();},
+  'play-next': async el => {await player.playId(el.dataset.id!);render();},
+  'retry-current': async () => {if(player.current)await player.playId(player.current.id);},
+  mute: async () => {if(state.volume>0){previousVolume=state.volume;state.volume=0;}else state.volume=previousVolume||1;player.volume(state.volume);await persist();updatePlayer();},
   'video-show': () => {videoMode='normal';view='player';location.hash='player';render();videoPresentation();},
   'video-compact': () => {videoMode='compact';videoPresentation();},
   'video-normal': () => {videoMode='normal';videoPresentation();},
@@ -1304,7 +1333,7 @@ async function boot() {
   }
   applyPreferences();
   window.addEventListener('keydown', e => {
-    if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable]') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented || e.repeat || document.querySelector<HTMLDialogElement>('#dialog')?.open || (e.target as HTMLElement)?.closest('input,textarea,select,button,a,[contenteditable],[role=combobox],[role=listbox],[role=option],[role=slider]') || e.ctrlKey || e.metaKey || e.altKey) return;
     if(e.code==='Space'){e.preventDefault();void player.toggle().catch(()=>{});}
     if(e.code==='ArrowRight'||e.code==='ArrowLeft'){e.preventDefault();player.seek(Math.max(0,player.position+(e.code==='ArrowRight'?1:-1)*preferences.seekStep));}
   });
