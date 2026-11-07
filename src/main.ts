@@ -897,6 +897,12 @@ const actionHandlers: Record<
       state.media.push(track);
       await persist();
     }
+    // A row starts its visible collection, so Next and Shuffle use the same
+    // tracks the listener chose from. Playing a queued row keeps that queue.
+    if (view !== 'queue') {
+      const visible = filtered().map(m => m.id);
+      if (visible.includes(id)) state.queue = visible;
+    }
     await player.playId(id);
     render();
   },

@@ -1,3 +1,8 @@
+## 0.3.7
+
+- Start playback from a library view with that view’s visible collection as the Next/Shuffle sequence. Preserve the saved queue when starting a queued item.
+- Regression coverage includes a long library sequence, preexisting manual queue entries and Shuffle.
+
 ## 0.3.6
 
 - Preserve favorite, queue and metadata field changes across synchronization and shared playback panels. Source-identity tombstones prevent stale clients from restoring deleted radio or YouTube entries; deliberate re-import remains available.

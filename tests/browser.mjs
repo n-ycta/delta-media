@@ -122,6 +122,15 @@ try {
     () => document.querySelector("video").currentTime > 0.3,
   );
   results.push("RSS enclosure: real HTTP audio playback");
+  await page.locator('[data-action=queue]').click();
+  assert.equal(await page.locator('.media-row').count(), 2, 'playing a library row queues its visible collection');
+  await page.locator('[data-action=next]').click();
+  await page.waitForFunction(() => document.querySelector('#now-title').textContent === 'tone');
+  // This track was resumed at 6 seconds: Previous first seeks to its start.
+  await page.locator('[data-action=previous]').click();
+  await page.locator('[data-action=previous]').click();
+  await page.waitForFunction(() => document.querySelector('#now-title').textContent === 'Test episode');
+  results.push("Library playback advances through its visible collection");
 
   await page.locator("#files").setInputFiles("tests/fixtures/picture.webm");
   await page.locator('[data-action=play][aria-label="Play picture"]').click();
@@ -252,6 +261,31 @@ try {
   await linkPage.waitForFunction(()=>document.querySelector('#embed')?.src.includes('youtube-nocookie.com/embed/jfKfPfyJRdk'));
   assert.equal(await linkPage.locator('#embed').isVisible(),true);await linkContext.close();
   results.push('Common import accepts a provider page link and opens its official embed (not proof of external audio access)');
+  const queueContext = await browser.newContext();
+  const queuePage = await queueContext.newPage();
+  await queuePage.addInitScript(() => { Math.random = () => 0; });
+  await queuePage.goto(origin);
+  const many = `<rss version="2.0"><channel><title>Library</title>${Array.from({length:25}, (_,i) => `<item><guid>track-${i}</guid><title>Track ${i}</title><enclosure url="${origin}/tone.wav?track=${i}" type="audio/wav"/></item>`).join('')}</channel></rss>`;
+  await queuePage.locator('#files').setInputFiles({name:'many.xml',mimeType:'text/xml',buffer:Buffer.from(many)});
+  await queuePage.locator('[data-action=view][data-view=library]').click();
+  await queuePage.locator('.media-row').first().waitFor();
+  assert.equal(await queuePage.locator('.media-row').count(), 25);
+  await queuePage.locator('.media-row').nth(0).locator('[data-action=enqueue]').click();
+  await queuePage.locator('.media-row').nth(1).locator('[data-action=enqueue]').click();
+  assert.equal(await queuePage.locator('.queue-action[aria-pressed=true]').count(), 2);
+  await queuePage.locator('.media-row').nth(2).locator('.art[data-action=play]').click();
+  await queuePage.waitForFunction(() => document.querySelectorAll('.queue-action[aria-pressed=true]').length === 25);
+  assert.equal(await queuePage.locator('.queue-action[aria-pressed=true]').count(), 25);
+  await queuePage.locator('#shuffle').click();
+  const heard = new Set([await queuePage.locator('#now-title').innerText()]);
+  for (let i=0;i<3;i++) {
+    await queuePage.locator('[data-action=next]').click();
+    await queuePage.waitForFunction(previous => document.querySelector('#now-title').textContent !== previous, [...heard].at(-1));
+    heard.add(await queuePage.locator('#now-title').innerText());
+  }
+  assert.equal(heard.size, 4, 'shuffle must not be limited to the two previously queued tracks');
+  await queueContext.close();
+  results.push('A library track starts all 25 visible items even when two were previously queued');
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(
