@@ -1,6 +1,9 @@
 ## 0.3.10
 
-- Extend YouTube search timeout and connection handshake to handle slower providers; show distinct messages for unavailable and unauthorized sources.
+- Add an always-visible player with responsive playback, provider embeds, and listening history saved locally.
+- Classify music separately from video and move 25 existing library tracks into Music without changing their playback metadata.
+- Extend slow YouTube search handling and clarify source authorization and failure messages.
+- Simplify track actions and improve narrow-screen layouts.
 
 ## 0.3.9
 
