@@ -12,9 +12,20 @@ import {
   directUrl,
   freshState,
   removeQueued,
+  mediaCategory,
 } from "../src/model";
+import { intentItems } from "../src/host";
 import { parsePlaylist, exportPlaylist } from "../src/playlists";
 import { adapters } from "../src/adapters";
+test("music classification is independent of a YouTube video player", () => {
+  const [music] = intentItems({provider:"youtube",url:"https://www.youtube.com/watch?v=abcdefghijk",title:"Song",artist:"Artist - Topic",kind:"video"});
+  const [video] = intentItems({provider:"youtube",url:"https://www.youtube.com/watch?v=123456789ab",title:"Talk",artist:"Channel",kind:"video"});
+  assert.equal(music.kind,"video"); assert.ok(music.embed); assert.equal(mediaCategory(music),"music");
+  assert.deepEqual(searchMedia([music,video],"",new Set(),"audio"),[music]);
+  assert.deepEqual(searchMedia([music,video],"",new Set(),"video"),[video]);
+  assert.equal(mediaCategory({...video,category:"music"}),"music");
+  assert.equal(mediaCategory(newMedia("direct","x","Audio","audio")),"music");
+});
 test("dedup preserves original metadata and imported playlist order, including repeats", () => {
   const a = newMedia("direct", "https://a.test/song", "Edited title"),
     b = newMedia("direct", "https://b.test/song", "B");

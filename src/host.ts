@@ -1,4 +1,4 @@
-import { directUrl, newMedia, type Media, type MediaKind } from "./model";
+import { directUrl, newMedia, mediaCategories, type Media, type MediaKind, type MediaCategory } from "./model";
 import { embedUrl } from "./embeds";
 /** Items other Delta apps hand over through `media.play` / `media.enqueue` intents. */
 const text = (v: unknown, max = 300) =>
@@ -32,6 +32,8 @@ export function intentItems(payload: unknown): Media[] {
         m.url = url;
       }
       m.artist = text(o.artist) || undefined;
+      if (mediaCategories.includes(o.category as MediaCategory)) m.category = o.category as MediaCategory;
+      else if (embed?.provider === "youtube" && /\s-\sTopic$/i.test(m.artist || "")) m.category = "music";
       if(text(o.channelUrl,2048))try{const u=new URL(String(o.channelUrl));if(u.protocol==='https:'&&u.hostname==='www.youtube.com')m.channelUrl=u.href;}catch{}
       m.album = text(o.album) || undefined;
       if (typeof o.duration === "number" && o.duration > 0 && o.duration < 1e6) m.duration = o.duration;

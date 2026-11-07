@@ -2,6 +2,8 @@ import {
   directUrl,
   parseSmartRule,
   newMedia,
+  mediaCategories,
+  type MediaCategory,
   type State,
   type Media,
   type Playlist,
@@ -55,6 +57,7 @@ export function importPortable(text: string): {
       ? row.kind
       : "audio";
     const m = newMedia("direct", url, row.title.slice(0, 512), kind);
+    if (mediaCategories.includes(row.category as MediaCategory)) m.category = row.category;
     m.url = url;
     for (const field of ["artist", "album", "genre", "lyrics"] as const)
       if (typeof row[field] === "string")

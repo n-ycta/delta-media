@@ -1,5 +1,7 @@
 export type MediaKind =
   "audio" | "video" | "podcast" | "audiobook" | "radio" | "live";
+export type MediaCategory = "music" | "video" | "podcast" | "audiobook" | "radio" | "live";
+export const mediaCategories: readonly MediaCategory[] = ["music", "video", "podcast", "audiobook", "radio", "live"];
 export type SourceId =
   | "local"
   | "direct"
@@ -26,6 +28,8 @@ export interface Media {
   source: SourceId;
   sourceKey: string;
   kind: MediaKind;
+  /** Library classification, independent of the source's playback format. */
+  category?: MediaCategory;
   title: string;
   url?: string;
   /** Official provider player (YouTube/SoundCloud/Spotify) when there is no direct stream. */
@@ -101,6 +105,9 @@ export const freshState = (): State => ({
   history: [],
 });
 export const uid = () => crypto.randomUUID();
+export function mediaCategory(media: Pick<Media, "kind" | "category">): MediaCategory {
+  return media.category && mediaCategories.includes(media.category) ? media.category : media.kind === "audio" ? "music" : media.kind;
+}
 export function directUrl(input: string, base?: string): string {
   const url = new URL(input, base);
   if (url.username || url.password || url.href.length > 8192)
@@ -167,7 +174,7 @@ export function searchMedia(
   return media.filter(
     (m) =>
       (sources.size === 0 || sources.has(m.source)) &&
-      (!kind || m.kind === kind) &&
+      (!kind || mediaCategory(m) === (kind === "audio" ? "music" : kind)) &&
       words.every((w) =>
         [m.title, m.artist, m.album, m.genre, ...m.tags]
           .join(" ")

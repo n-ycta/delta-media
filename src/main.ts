@@ -33,6 +33,8 @@ import {
   directUrl,
   newMedia,
   searchMedia,
+  mediaCategory,
+  type MediaCategory,
   uid,
   parseLrc,
   type State,
@@ -348,9 +350,9 @@ function filtered() {
   }
   if (view === "favorites") rows = rows.filter((m) => m.favorite);
   if (["audio", "video", "podcast", "audiobook"].includes(view))
-    rows = rows.filter((m) => m.kind === view);
+    rows = rows.filter((m) => mediaCategory(m) === (view === 'audio' ? 'music' : view));
   if (view === "radio")
-    rows = rows.filter((m) => ["radio", "live"].includes(m.kind));
+    rows = rows.filter((m) => ["radio", "live"].includes(mediaCategory(m)));
   if (view === "home")
     rows = rows
       .filter((m) => m.position > 0)
@@ -809,7 +811,7 @@ function details(id: string) {
   if (!m) return;
   selectedId = id;
   modal(
-    `<div class="eyebrow">${esc(m.source)} · ${esc(m.kind)}</div><h2>${esc(m.title)}</h2><form id="edit-media">${input("title", t("Название", "Title"), m.title)}${input("artist", t("Исполнитель / автор", "Artist / author"), m.artist)}${input("album", t("Альбом / серия", "Album / series"), m.album)}${input("genre", t("Жанр", "Genre"), m.genre)}${input("tags", t("Теги через запятую", "Comma-separated tags"), m.tags.join(", "))}${input("artwork", t("Обложка: HTTPS URL", "Artwork: HTTPS URL"), m.artwork, "url")}<label>${t("Тип", "Type")}<select name="kind">${(["audio", "video", "podcast", "audiobook", "radio", "live"] as const).map((k) => `<option ${m.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select></label><label>${t("Текст / LRC", "Lyrics / LRC")}<textarea name="lyrics" maxlength="100000">${esc(m.lyrics)}</textarea></label><label>${t("Главы: секунды | название, одна на строку", "Chapters: seconds | title, one per line")}<textarea name="chapters">${esc(m.chapters.map((c) => c.start + " | " + c.title).join("\n"))}</textarea></label><button type="submit" class="primary">${icon("save")} ${t("Сохранить", "Save")}</button><p id="form-error" role="alert"></p></form><hr><h3>${t("Воспроизведение", "Playback")}</h3><button data-action="play" data-id="${m.id}">${icon("play")} ${t("Продолжить", "Resume")}</button><p id="synced-lyrics" class="lyrics">${esc(m.lyrics || t("Нет текста", "No lyrics"))}</p>${m.chapters.map((c) => `<button data-action="chapter" data-id="${m.id}" data-time="${c.start}">${time(c.start)} · ${esc(c.title)}</button>`).join("")}<h3>${t("Закладки", "Bookmarks")}</h3><button data-action="bookmark" data-id="${m.id}">${icon("plus")} ${t("Закладка", "Bookmark")}</button>${m.bookmarks.map((b) => `<button data-action="chapter" data-id="${m.id}" data-time="${b.position}">${time(b.position)} · ${esc(b.note)}</button>`).join("")}<h3>${t("Плейлисты", "Playlists")}</h3>${state.playlists
+    `<div class="eyebrow">${esc(m.source)} · ${esc(m.kind)}</div><h2>${esc(m.title)}</h2><form id="edit-media">${input("title", t("Название", "Title"), m.title)}${input("artist", t("Исполнитель / автор", "Artist / author"), m.artist)}${input("album", t("Альбом / серия", "Album / series"), m.album)}${input("genre", t("Жанр", "Genre"), m.genre)}${input("tags", t("Теги через запятую", "Comma-separated tags"), m.tags.join(", "))}${input("artwork", t("Обложка: HTTPS URL", "Artwork: HTTPS URL"), m.artwork, "url")}<label>${t("Категория", "Category")}<select name="category">${([ ["music", t("Музыка", "Music")], ["video", t("Видео", "Video")], ["podcast", t("Подкаст", "Podcast")], ["audiobook", t("Аудиокнига", "Audiobook")], ["radio", t("Радио", "Radio")], ["live", t("Прямой эфир", "Live")] ] as const).map(([value,label]) => `<option value="${value}" ${mediaCategory(m) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>${t("Текст / LRC", "Lyrics / LRC")}<textarea name="lyrics" maxlength="100000">${esc(m.lyrics)}</textarea></label><label>${t("Главы: секунды | название, одна на строку", "Chapters: seconds | title, one per line")}<textarea name="chapters">${esc(m.chapters.map((c) => c.start + " | " + c.title).join("\n"))}</textarea></label><button type="submit" class="primary">${icon("save")} ${t("Сохранить", "Save")}</button><p id="form-error" role="alert"></p></form><hr><h3>${t("Воспроизведение", "Playback")}</h3><button data-action="play" data-id="${m.id}">${icon("play")} ${t("Продолжить", "Resume")}</button><p id="synced-lyrics" class="lyrics">${esc(m.lyrics || t("Нет текста", "No lyrics"))}</p>${m.chapters.map((c) => `<button data-action="chapter" data-id="${m.id}" data-time="${c.start}">${time(c.start)} · ${esc(c.title)}</button>`).join("")}<h3>${t("Закладки", "Bookmarks")}</h3><button data-action="bookmark" data-id="${m.id}">${icon("plus")} ${t("Закладка", "Bookmark")}</button>${m.bookmarks.map((b) => `<button data-action="chapter" data-id="${m.id}" data-time="${b.position}">${time(b.position)} · ${esc(b.note)}</button>`).join("")}<h3>${t("Плейлисты", "Playlists")}</h3>${state.playlists
       .filter((p) => !p.rule)
       .map(
         (p) =>
@@ -841,7 +843,7 @@ function details(id: string) {
           .map((s) => s.trim())
           .filter(Boolean)
           .slice(0, 100);
-        changes.kind = String(data.get("kind")) as MediaKind;
+        changes.category = String(data.get("category")) as MediaCategory;
         changes.chapters = String(data.get("chapters"))
           .split("\n")
           .filter((s) => s.trim())
