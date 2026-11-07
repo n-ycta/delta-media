@@ -1,3 +1,7 @@
+## 0.3.10
+
+- Extend YouTube search timeout and connection handshake to handle slower providers; show distinct messages for unavailable and unauthorized sources.
+
 ## 0.3.9
 
 - Classify audio and video independently so music appears in the Music view while video playback continues to use its media type.

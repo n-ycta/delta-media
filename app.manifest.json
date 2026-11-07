@@ -1,7 +1,7 @@
 {
   "id": "dev.delta.media",
   "name": "Delta Media",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "entry": "index.html",
   "runtime": {
     "execution": "web",
