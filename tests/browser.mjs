@@ -77,6 +77,7 @@ try {
   await page.locator("[data-action=favorite]").click();
   await page.locator("[data-action=view][data-view=favorites]").click();
   assert.equal(await page.locator(".media-row").count(), 1);
+  await page.locator('[data-action=track-menu]').click();
   await page.locator('[data-action=details]').click();
   await page.locator("input[name=artist]").fill("Aster");
   await page.locator("input[name=album]").fill("Night field");
@@ -263,7 +264,7 @@ try {
   results.push('Common import accepts a provider page link and opens its official embed (not proof of external audio access)');
   const queueContext = await browser.newContext();
   const queuePage = await queueContext.newPage();
-  await queuePage.addInitScript(() => { Math.random = () => 0; });
+  await queuePage.addInitScript(() => { Math.random = () => 0; localStorage.setItem('delta-media.preferences',JSON.stringify({showQueueControls:true})); });
   await queuePage.goto(origin);
   const many = `<rss version="2.0"><channel><title>Library</title>${Array.from({length:25}, (_,i) => `<item><guid>track-${i}</guid><title>Track ${i}</title><enclosure url="${origin}/tone.wav?track=${i}" type="audio/wav"/></item>`).join('')}</channel></rss>`;
   await queuePage.locator('#files').setInputFiles({name:'many.xml',mimeType:'text/xml',buffer:Buffer.from(many)});
@@ -284,8 +285,25 @@ try {
     heard.add(await queuePage.locator('#now-title').innerText());
   }
   assert.equal(heard.size, 4, 'shuffle must not be limited to the two previously queued tracks');
+  await queuePage.locator('[data-action=view][data-view=settings]').click();
+  await queuePage.locator('[data-pref=showQueueControls]').uncheck();
+  await queuePage.locator('[data-action=view][data-view=library]').click();
+  assert.equal(await queuePage.locator('.queue-action').count(),0,'queue toggles are hidden by default');
+  for(const width of [360,768,1280]) {
+    await queuePage.setViewportSize({width,height:900});
+    assert.equal(await queuePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`no page overflow at ${width}`);
+    assert.equal(await queuePage.locator('.media-row').first().evaluate(row=>row.scrollWidth>row.clientWidth),false,`track controls fit at ${width}`);
+    assert.equal(await queuePage.locator('[data-action=selection-start]').evaluate(button=>button.scrollWidth>button.clientWidth),false,`selection label fits at ${width}`);
+    await queuePage.evaluate(()=>scrollTo(0,0));
+    await queuePage.screenshot({path:path.join(output,`media-library-actions-${width}.png`)});
+  }
+  await queuePage.locator('[data-action=track-menu]').first().click();
+  assert.equal(await queuePage.locator('#dialog [data-action=delete]').count(),1,'delete is available in track menu');
+  assert.equal(await queuePage.locator('#dialog [data-action=append-queue]').count(),1,'individual queue action stays available in track menu');
+  await queuePage.screenshot({path:path.join(output,'media-track-menu-1280.png')});
   await queueContext.close();
   results.push('A library track starts all 25 visible items even when two were previously queued');
+  results.push('Queue controls are opt-in, track actions stay in the menu, and layouts fit 360/768/1280px');
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify(
