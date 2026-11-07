@@ -51,7 +51,7 @@ if (parent !== window && launch.get("embedded") === "1") {
   try {
     const parentOrigin = launch.get("parentOrigin");
     if (!parentOrigin) throw Error("missing_parent_origin");
-    const connection = await connectPlugin(parentOrigin);
+    const connection = await connectPlugin(parentOrigin, 20000);
     hostContext = connection.context;
     host = connection;
     applyThemeTokens(hostContext.tokens);
@@ -116,7 +116,11 @@ async function searchProviders(value: string) {
     const result=await host.call('media.search',{query:value,providers:preferences.searchProviders}) as {items:Record<string,any>[];providers?:{provider:string;error?:string}[]};
     if(query!==value)return;
     remoteItems=result.items||[];
-    if(result.providers?.some(p=>p.error))searchMessage=t('Часть источников не ответила. Можно повторить поиск.','Some sources did not respond. You can retry the search.');
+    const providers=result.providers||[], failed=providers.filter(p=>p.error);
+    if(!providers.length)searchMessage=t('Нет доступных источников для поиска. Проверьте настройки источников.','No search sources are available. Check source settings.');
+    else if(failed.length===providers.length && failed.every(p=>p.error==='forbidden'))searchMessage=t('Источники не подключены для поиска. Проверьте настройки источников.','Search sources require authorization. Check source settings.');
+    else if(failed.length===providers.length)searchMessage=t('Источники поиска сейчас недоступны. Повторите попытку.','Search sources are unavailable. Try again.');
+    else if(failed.length)searchMessage=t('Часть источников не ответила. Можно повторить поиск.','Some sources did not respond. You can retry the search.');
     else if(!remoteItems.length)searchMessage=t('В источниках ничего не найдено.','No results from connected sources.');
   } catch {
     if(query===value){remoteItems=[];searchMessage=t('Поиск временно недоступен. Повторите попытку.','Search is temporarily unavailable. Try again.');}

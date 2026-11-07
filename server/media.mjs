@@ -16,7 +16,7 @@ export async function createMedia(client,options={}) {
  const providers=async()=>{const cs=await client.call('core.components');return cs.filter(c=>c.metadata?.mediaProvider).map(c=>({...c.metadata.mediaProvider,component:c.id}));};
  const provider=async id=>{const p=(await providers()).find(p=>p.id===id);if(!p||!['youtube','soundcloud','spotify'].includes(p.component))throw new DeltaError('not_found','Provider not connected');return p};
  const invoke=options.forward||((cap,args)=>client.forward(cap,args));
- const searchDeadline=async promise=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(Error('Search timeout'),{code:'timeout'})),options.searchTimeoutMs||3800);})]);}finally{clearTimeout(timer);}};
+ const searchDeadline=async promise=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(Error('Search timeout'),{code:'timeout'})),options.searchTimeoutMs||15000);})]);}finally{clearTimeout(timer);}};
  const resolveItem=async a=>{
   if(typeof a.url!=='string'||a.url.length>8192)bad('URL required');
   const u=new URL(a.url);if(u.protocol!=='https:'||u.username||u.password)bad('HTTPS media URL required');
