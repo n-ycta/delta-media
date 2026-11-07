@@ -1,3 +1,9 @@
+## 0.3.8
+
+- Reduce row clutter with optional queue controls. “Add to queue” stays available from the track menu; the upcoming view shows the playback sequence.
+- Fix selection label overlap and track-row overflow on narrow screens.
+- Keep the queue-controls preference on this device; it does not change the server API.
+
 ## 0.3.7
 
 - Start playback from a library view with that view’s visible collection as the Next/Shuffle sequence. Preserve the saved queue when starting a queued item.
