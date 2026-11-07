@@ -1,3 +1,7 @@
+## 0.3.9
+
+- Classify audio and video independently so music appears in the Music view while video playback continues to use its media type.
+
 ## 0.3.8
 
 - Reduce row clutter with optional queue controls. “Add to queue” stays available from the track menu; the upcoming view shows the playback sequence.
