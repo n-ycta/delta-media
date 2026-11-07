@@ -100,7 +100,7 @@ export class EmbedController {
       if (this.provider === "youtube" && d.event === "infoDelivery" && typeof d.info?.playerState === "number") {
         const s = d.info.playerState;
         if (s === 1) this.set(true);
-        else if (s === 2) this.set(false);
+        else if (s === 2 || s === 3 || s === 5 || s === -1) this.set(false);
         else if (s === 0) {
           this.set(false);
           onEnded();

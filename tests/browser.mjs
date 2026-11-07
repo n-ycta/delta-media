@@ -73,6 +73,10 @@ try {
     return v && v.readyState >= 1 && v.currentTime >= 6;
   });
   results.push("Progress restored after full page reload, without autoplay");
+  await page.locator('[data-action=view][data-view=stats]').click();
+  await page.getByRole('button',{name:'24 hours',exact:true}).click();
+  assert.equal(await page.locator('.metrics article').nth(1).locator('strong').innerText(),'1','local history survives reload and restore does not count another session');
+  results.push('Listening history survives IndexedDB reload without counting a restored item as a new play');
   await page.locator("[data-action=view][data-view=library]").click();
   await page.locator("[data-action=favorite]").click();
   await page.locator("[data-action=view][data-view=favorites]").click();
@@ -123,6 +127,14 @@ try {
     () => document.querySelector("video").currentTime > 0.3,
   );
   results.push("RSS enclosure: real HTTP audio playback");
+  await page.locator('[data-action=view][data-view=stats]').click();
+  await page.getByRole('button',{name:'24 hours',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'24 hours',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.match(await page.locator('#view').innerText(),/History on this device/);
+  await page.getByRole('button',{name:'All time',exact:true}).click();
+  assert.match(await page.locator('#view').innerText(),/Top artists/);
+  await page.locator('[data-action=view][data-view=library]').click();
+  results.push('Listening statistics offer honest local time periods and artist totals');
   await page.locator('[data-action=queue]').click();
   assert.equal(await page.locator('.media-row').count(), 2, 'playing a library row queues its visible collection');
   await page.locator('[data-action=next]').click();

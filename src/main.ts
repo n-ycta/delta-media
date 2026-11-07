@@ -1,4 +1,5 @@
 import { image, changes, reconcile } from "./reconcile";
+import { summarizeListening, type ListeningPeriod } from "./listening";
 import {OfflineCache} from "./offline";
 import {analysePlayback} from "./visualizer";
 import { sharedPlayback } from "./shared";
@@ -79,6 +80,7 @@ function videoPresentation() {
   localStorage.setItem('delta-media.video-mode',videoMode);localStorage.setItem('delta-media.video-height',String(videoHeight));
 }
 let searchInFlight = false, searchMessage = "";
+let statsPeriod: ListeningPeriod = 'all';
 let browseInfo:{title:string;description?:string;artwork?:string;url:string;next?:string}|undefined;
 let searchTimer: ReturnType<typeof setTimeout>;
 let libraryDirty = true, syncBusy = false;
@@ -619,15 +621,9 @@ function render() {
     return;
   }
   if (view === "stats") {
-    const listened = state.media.reduce((n, m) => n + m.listenedSeconds, 0);
-    target.innerHTML = `<div class="heading"><div><h1>${label.stats}</h1></div></div><div class="metrics"><article><strong>${Math.floor(listened / 60)}</strong><span>${t("минут воспроизведения", "minutes played")}</span></article><article><strong>${state.media.reduce((n, m) => n + m.plays, 0)}</strong><span>${t("запусков", "play sessions")}</span></article><article><strong>${state.media.reduce((n, m) => n + m.skips, 0)}</strong><span>${t("пропусков", "skips")}</span></article></div><h2>${t("Чаще всего", "Most played")}</h2>${[
-      ...state.media,
-    ]
-      .sort((a, b) => b.plays - a.plays)
-      .filter((m) => m.plays)
-      .slice(0, 20)
-      .map(row)
-      .join("")}`;
+    const stats=summarizeListening(state,statsPeriod);
+    const periods: [ListeningPeriod,string][]=[['day',t('24 часа','24 hours')],['week',t('7 дней','7 days')],['month',t('30 дней','30 days')],['all',t('Всё время','All time')]];
+    target.innerHTML = `<div class="heading"><h1>${label.stats}</h1></div><div class="stats-periods" role="group" aria-label="${t('Период','Period')}">${periods.map(([id,name])=>`<button data-action="stats-period" data-id="${id}" aria-pressed="${statsPeriod===id}">${name}</button>`).join('')}</div><p class="hint">${statsPeriod==='all'?t('Итоги сохранённых записей медиатеки.','Totals for saved library items.'):t('История на этом устройстве, до 1000 последних сеансов.','History on this device, up to the latest 1,000 sessions.')}</p><div class="metrics"><article><strong>${Math.floor(stats.seconds/60)}</strong><span>${t('минут прослушивания','minutes listened')}</span></article><article><strong>${stats.plays}</strong><span>${t('сеансов воспроизведения','play sessions')}</span></article>${statsPeriod==='all'?`<article><strong>${state.media.reduce((n,m)=>n+(Number(m.skips)||0),0)}</strong><span>${t('пропусков','skips')}</span></article>`:''}</div><h2>${t('Популярные записи','Top tracks')}</h2>${stats.tracks.length?`<div class="media-list">${stats.tracks.slice(0,20).map(({item},i)=>row(item,i)).join('')}</div>`:`<p class="hint">${t('За этот период данных пока нет.','No listening data for this period yet.')}</p>`}<h2>${t('Популярные исполнители','Top artists')}</h2>${stats.artists.length?`<ol>${stats.artists.slice(0,10).map(a=>`<li>${esc(a.name)} · ${a.plays}</li>`).join('')}</ol>`:`<p class="hint">${t('Пока нет данных об исполнителях.','No artist data yet.')}</p>`}`;
     return;
   }
   const rows = filtered(),
@@ -909,6 +905,7 @@ const actionHandlers: Record<
   string,
   (el: HTMLElement) => Promise<unknown> | unknown
 > = {
+  "stats-period": (el) => { const period=el.dataset.id; if(period==='day'||period==='week'||period==='month'||period==='all'){statsPeriod=period;render();} },
   "radio-refresh": () => radio.act("radio-refresh"),
   "radio-back": () => {
     query = "";

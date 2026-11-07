@@ -1,14 +1,13 @@
-import { nextIndex, uid, type State, type Media } from "./model";
+import { nextIndex, type State, type Media } from "./model";
+import { ListeningTracker } from "./listening";
 import { Storage } from "./storage";
 import { EmbedController, embedUrl } from "./embeds";
 import type { PlaybackStatus } from './player-view';
 export class Player extends EventTarget {
   private objectUrl = "";
-  private session = false;
-  private lastTick = 0;
+  private readonly listening: ListeningTracker;
   private lastSave = 0;
   private generation = 0;
-  private historyId = "";
   private metadataReady = false;
   private restorePosition = 0;
   private lastError = '';
@@ -26,11 +25,12 @@ export class Player extends EventTarget {
     embedFrame?: HTMLIFrameElement,
   ) {
     super();
+    this.listening = new ListeningTracker(state);
     if (embedFrame)
       this.embed = new EmbedController(
         embedFrame,
         () => {
-          if(this.usingEmbed){if(this.embed!.hasPosition)this.current!.position=this.embed!.position;if(this.embed!.duration>0)this.current!.duration=this.embed!.duration;}
+          if(this.usingEmbed){if(this.embed!.hasPosition)this.current!.position=this.embed!.position;if(this.embed!.duration>0)this.current!.duration=this.embed!.duration;this.observe(this.embed!.playing,this.embed!.hasPosition?this.embed!.position:undefined);}
           this.change();
         },
         () =>
@@ -58,60 +58,28 @@ export class Player extends EventTarget {
       this.change();
     });
     element.addEventListener("playing", () => {
-      if (!this.current) return;
-      if (!this.session) {
-        this.current.plays++;
-        this.current.lastPlayed = Date.now();
-        this.historyId = uid();
-        state.history.unshift({
-          id: this.historyId,
-          mediaId: this.current.id,
-          at: Date.now(),
-          position: this.current.position,
-          seconds: 0,
-        });
-        state.history = state.history.slice(0, 1000);
-        this.session = true;
-      }
-      this.lastTick = performance.now();
+      if (!this.current || this.usingEmbed) return;
+      this.observe(true,element.currentTime,element.playbackRate);
       this.change();
     });
     element.addEventListener("timeupdate", () => {
       const m = this.current;
       if (!m || !this.metadataReady) return;
-      const now = performance.now();
-      const delta = (now - this.lastTick) / 1000;
-      if (
-        !element.paused &&
-        !element.seeking &&
-        this.lastTick &&
-        delta > 0 &&
-        delta < 3
-      ) {
-        m.listenedSeconds += delta;
-        const h = state.history.find((h) => h.id === this.historyId);
-        if (h) h.seconds += delta;
-      }
-      this.lastTick = now;
       if (Number.isFinite(element.currentTime))
         m.position = element.currentTime;
-      const h = state.history.find((h) => h.id === this.historyId);
-      if (h) h.position = m.position;
+      this.observe(!element.paused&&!element.seeking,element.currentTime,element.playbackRate);
       this.change();
-      if (now - this.lastSave > 5000) {
-        this.lastSave = now;
-        void save().catch(() => {});
-      }
     });
     element.addEventListener("pause", () => {
-      this.lastTick = 0;
+      if (!this.usingEmbed) this.observe(false,element.currentTime,element.playbackRate);
       void save().catch(() => {});
       this.change();
     });
     element.addEventListener("seeking", () => {
-      this.lastTick = 0;
+      this.listening.discontinuity();
     });
     element.addEventListener("ended", () => {
+      if (!this.usingEmbed) this.observe(false,element.currentTime,element.playbackRate);
       if (this.current) this.current.position = 0;
       void save().catch(() => {});
       void this.next(true).catch((e) =>
@@ -158,6 +126,13 @@ export class Player extends EventTarget {
   private change() {
     this.dispatchEvent(new Event("change"));
   }
+  private observe(playing:boolean,position?:number,rate=1) {
+    if(!this.current)return;
+    const result=this.listening.update(this.current,playing,position,rate),now=performance.now();
+    if(result.started||result.stopped||(result.seconds>0&&now-this.lastSave>5000)){
+      this.lastSave=now;void this.save().catch(()=>{});
+    }
+  }
   async load(index: number, autoplay = true): Promise<void> {
     if (this.delegate) { if (autoplay) await this.delegate('load',[index,autoplay]); return; }
     return this.playId(this.state.queue[index], autoplay);
@@ -173,6 +148,8 @@ export class Player extends EventTarget {
     const m = this.state.media.find((m) => m.id === id);
     if (!m)
       throw Error("Queue item is unavailable. Remove it or reimport the file.");
+    if(this.current)this.observe(false,this.usingEmbed?(this.embed!.hasPosition?this.embed!.position:undefined):this.element.currentTime,this.element.playbackRate);
+    this.listening.reset();
     const generation = ++this.generation;
     this.element.pause();
     this.metadataReady = false;
@@ -180,8 +157,6 @@ export class Player extends EventTarget {
     this.current = m;
     this.state.currentId = m.id;
     this.state.queueIndex = this.state.queue.indexOf(id);
-    this.session = false;
-    this.historyId = "";
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
       this.objectUrl = "";
@@ -197,8 +172,6 @@ export class Player extends EventTarget {
       this.element.hidden = true;
       if ("mediaSession" in navigator)
         navigator.mediaSession.metadata = new MediaMetadata({ title: m.title, artist: m.artist || "", album: m.album || "", artwork: m.artwork ? [{src:m.artwork}] : [] });
-      m.lastPlayed = Date.now();
-      m.plays++;
       if (autoplay) this.embed!.open(e.provider, e.url);
       await this.save();
       this.change();
@@ -253,6 +226,8 @@ export class Player extends EventTarget {
   }
   async stop(): Promise<void> {
     if (this.delegate) { await this.delegate('stop', []); this.current = undefined; this.remotePlaying = false; return; }
+    if(this.current)this.observe(false,this.usingEmbed?(this.embed!.hasPosition?this.embed!.position:undefined):this.element.currentTime,this.element.playbackRate);
+    this.listening.reset();
     this.generation++;
     this.element.pause();
     this.embed?.close();
@@ -294,6 +269,7 @@ export class Player extends EventTarget {
   seek(time: number) {
     if(this.delegate){void this.delegate('seek',[time]);return;}
     if (!Number.isFinite(time)) return;
+    this.listening.discontinuity();
     if(this.usingEmbed){this.embed!.seek(time);return;}
     const max = Number.isFinite(this.element.duration)
       ? this.element.duration
